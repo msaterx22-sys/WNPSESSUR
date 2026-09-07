@@ -490,6 +490,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         activeStudentPortal,
         setActiveStudentPortal,
         addStudent,
+        importStudents,
         updateStudent,
         deleteStudent,
         recordPayment,

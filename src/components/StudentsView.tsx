@@ -47,6 +47,8 @@ const importHeaderAliases = {
   name: ['name', 'studentname', 'student', 'studentfullname'],
   admissionNo: ['admissionno', 'admissionnumber', 'admno', 'admissionid', 'admissioncode'],
   parentPhone: ['parentphone', 'parentmobile', 'phone', 'phoneno', 'mobileno', 'mobile', 'contactnumber'],
+  fatherName: ['fathername', 'father', 'parentname', 'guardianname'],
+  dateOfBirth: ['dateofbirth', 'dob', 'birthdate'],
 };
 
 const findImportHeaderRow = (sheet: XLSX.WorkSheet) => {
@@ -136,10 +138,11 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           standard,
           section: readCell(row, ['section', 'sec']) || 'A',
           gender: readGender(readCell(row, ['gender', 'sex'])),
-          parentName: readCell(row, ['parentname', 'fathername', 'guardianname']) || 'Parent',
+          parentName: readCell(row, importHeaderAliases.fatherName) || 'Parent',
           parentPhone,
           whatsappNumber: readCell(row, ['whatsappnumber', 'whatsapp', 'whatsappno']) || parentPhone,
           address: readCell(row, ['address']) || 'Essur - 603301',
+          dateOfBirth: readCell(row, importHeaderAliases.dateOfBirth),
           isRte,
           rteApplicationNo: readCell(row, ['rteapplicationno', 'rteapplication']),
           rteGovtReimbursed: readBoolean(readCell(row, ['rtegovtreimbursed', 'reimbursed'])),
@@ -165,8 +168,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
       const result = importStudents(records);
       alert(`Imported ${result.imported} student${result.imported === 1 ? '' : 's'}. ${result.skipped} duplicate or invalid row${result.skipped === 1 ? '' : 's'} skipped.`);
-    } catch {
-      alert('Could not read this file. CSV, XLS, and XLSX files are supported. Native Apple Numbers files must be exported as XLSX or CSV first.');
+    } catch (error) {
+      console.error('Student import failed:', error);
+      const detail = error instanceof Error ? ` Details: ${error.message}` : '';
+      alert(`Could not read this file. CSV, XLS, and XLSX files are supported.${detail}`);
     }
   };
 

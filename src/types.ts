@@ -67,6 +67,7 @@ export interface Student {
   parentPhone: string;
   whatsappNumber: string;
   address: string;
+  dateOfBirth?: string;
   photoUrl?: string; // Student ID and Van Card photo data URL or image path
   isRte?: boolean; // Right to Education (RTE Quota - free tuition / govt subsidized)
   rteApplicationNo?: string; // RTE Government application / registration code

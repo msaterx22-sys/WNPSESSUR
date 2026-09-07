@@ -30,6 +30,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
   const [parentPhone, setParentPhone] = useState<string>(studentToEdit?.parentPhone || '');
   const [whatsappNumber, setWhatsappNumber] = useState<string>(studentToEdit?.whatsappNumber || '');
   const [address, setAddress] = useState<string>(studentToEdit?.address || 'Essur - 603301');
+  const [dateOfBirth, setDateOfBirth] = useState<string>(studentToEdit?.dateOfBirth || '');
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(studentToEdit?.photoUrl);
 
   // RTE Quota State
@@ -131,6 +132,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       parentPhone: parentPhone.trim(),
       whatsappNumber: (whatsappNumber || parentPhone).trim(),
       address: address.trim(),
+      dateOfBirth: dateOfBirth.trim(),
       photoUrl,
       isRte,
       rteApplicationNo: isRte ? rteApplicationNo.trim() : undefined,
@@ -454,6 +456,17 @@ export const StudentModal: React.FC<StudentModalProps> = ({
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Door No, Street, Essur - 603301"
+              className="w-full border border-[#E2E8E2] rounded-lg p-2 bg-[#FDFDFB] text-[#2D312E] focus:bg-white outline-hidden"
+            />
+          </div>
+
+          <div className="sm:w-56">
+            <label className="block font-semibold text-[#2D312E] mb-1">Date of Birth</label>
+            <input
+              type="text"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              placeholder="DD-MM-YYYY"
               className="w-full border border-[#E2E8E2] rounded-lg p-2 bg-[#FDFDFB] text-[#2D312E] focus:bg-white outline-hidden"
             />
           </div>
