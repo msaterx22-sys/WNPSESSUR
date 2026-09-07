@@ -255,7 +255,7 @@ export const FeeCardsStudio: React.FC = () => {
                 </div>
               </div>
               <div className="mt-2 inline-block bg-[#D68A6E] text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-widest shadow-2xs">
-                STUDENT IDENTITY CARD • 2024 - 2025
+                STUDENT IDENTITY CARD • {schoolInfo.academicYear}
               </div>
             </div>
 
@@ -371,7 +371,7 @@ export const FeeCardsStudio: React.FC = () => {
 
               <div className="text-right">
                 <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
-                  R. Saravanan
+                  {schoolInfo.adminName}
                 </span>
                 <strong className="text-slate-900 block text-[11px]">{schoolInfo.adminName}</strong>
                 <span className="text-[9px] text-slate-500">Correspondent / Head</span>
@@ -402,7 +402,7 @@ export const FeeCardsStudio: React.FC = () => {
                 </p>
                 <div className="mt-1">
                   <span className="bg-slate-900 text-white text-[11px] font-bold px-3 py-0.5 rounded tracking-widest uppercase">
-                    STUDENT FEE RECORD CARD (2024 - 2025)
+                    STUDENT FEE RECORD CARD ({schoolInfo.academicYear})
                   </span>
                 </div>
               </div>
@@ -559,7 +559,7 @@ export const FeeCardsStudio: React.FC = () => {
                   ) : (
                     <tr>
                       <td colSpan={6} className="p-4 text-center text-slate-400 italic">
-                        No payments recorded yet for 2024-2025.
+                        No payments recorded yet for {schoolInfo.academicYear}.
                       </td>
                     </tr>
                   )}
@@ -592,7 +592,7 @@ export const FeeCardsStudio: React.FC = () => {
 
               <div className="text-right">
                 <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
-                  R. Saravanan
+                  {schoolInfo.adminName}
                 </span>
                 <strong className="text-slate-900 block text-xs">{schoolInfo.adminName}</strong>
                 <span className="text-[10px] text-slate-500">School Admin / Correspondent</span>
@@ -699,7 +699,7 @@ export const FeeCardsStudio: React.FC = () => {
             <div className="text-[10px] text-slate-600 border-t border-dashed border-slate-300 pt-2 mb-4 space-y-1">
               <p>• Student must board and alight only at the designated pickup stop.</p>
               <p>• Van Pass must be carried daily and shown upon driver/attendant request.</p>
-              <p>• Emergency Van Contact / School Office Admin: <strong>{schoolInfo.adminName} (+91 9176593129)</strong></p>
+              <p>• Emergency Van Contact / School Office Admin: <strong>{schoolInfo.adminName} ({schoolInfo.phone})</strong></p>
             </div>
 
             {/* Signatures */}

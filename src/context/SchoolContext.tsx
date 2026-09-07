@@ -126,7 +126,11 @@ const isArray = (value: unknown): value is unknown[] => Array.isArray(value);
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>(() => {
     const stored = readStoredValue('wisdom_school_info', DEFAULT_SCHOOL_INFO, isSchoolInfo);
-    return { ...DEFAULT_SCHOOL_INFO, ...stored };
+    const merged = { ...DEFAULT_SCHOOL_INFO, ...stored };
+    if (merged.academicYear === '2024-2025' || merged.academicYear === '2024 - 2025') {
+      merged.academicYear = DEFAULT_SCHOOL_INFO.academicYear;
+    }
+    return merged;
   });
 
   const [classList, setClassList] = useState<string[]>(() => {

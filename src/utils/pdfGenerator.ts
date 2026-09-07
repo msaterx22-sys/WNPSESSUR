@@ -224,7 +224,7 @@ function renderSingleSlipPage(
   doc.setTextColor(214, 138, 110); // #D68A6E Terracotta
   doc.text(`${school.address} | Phone: ${school.phone}`, 105, 24, { align: 'center' });
   doc.setTextColor(200, 200, 200);
-  doc.text(`Official Fee Statement & Academic Dues Card | Academic Year 2024-2025`, 105, 30, { align: 'center' });
+  doc.text(`Official Fee Statement & Academic Dues Card | Academic Year ${school.academicYear}`, 105, 30, { align: 'center' });
 
   // Document Title Bar
   doc.setFillColor(242, 244, 242);
@@ -545,7 +545,7 @@ function renderDemandNoticePage(
   doc.rect(14, y - 4, 182, 8, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(79, 109, 122);
-  doc.text(`Sub: Settlement of Pending Tuition & Facilities Dues for Academic Year 2024-2025 - Reg.`, 16, y + 1.5);
+  doc.text(`Sub: Settlement of Pending Tuition & Facilities Dues for Academic Year ${school.academicYear} - Reg.`, 16, y + 1.5);
 
   // Formal Notice Body
   y += 10;
@@ -667,9 +667,9 @@ function renderIdCard(
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(214, 138, 110);
-  doc.text('ESSUR - 603301 | ACADEMIC ID CARD', startX + w / 2, startY + 13, { align: 'center' });
+  doc.text(`${school.location.toUpperCase()} - ${school.pincode} | ACADEMIC ID CARD`, startX + w / 2, startY + 13, { align: 'center' });
   doc.setTextColor(200, 200, 200);
-  doc.text(`Academic Year 2024-2025`, startX + w / 2, startY + 18, { align: 'center' });
+  doc.text(`Academic Year ${school.academicYear}`, startX + w / 2, startY + 18, { align: 'center' });
 
   // Photo Frame
   const photoY = startY + 25;
@@ -1041,7 +1041,7 @@ function renderOfficialReceiptSlipFullPage(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(45, 49, 46);
-  doc.text('R. Saravanan', 169.5, currentY + 10, { align: 'center' });
+  doc.text(school.adminName, 169.5, currentY + 10, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 100, 100);
@@ -1051,7 +1051,7 @@ function renderOfficialReceiptSlipFullPage(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(130, 130, 130);
-  doc.text('* This is an official computer-generated fee payment receipt issued by Wisdom Nursery & Primary School Office, Essur - 603301.', 105, 283, { align: 'center' });
+  doc.text(`* This is an official computer-generated fee payment receipt issued by ${school.name} Office, ${school.address}.`, 105, 283, { align: 'center' });
 }
 
 function renderOfficialReceiptSlipHalfPage(
@@ -1228,7 +1228,7 @@ function renderOfficialReceiptSlipHalfPage(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(45, 49, 46);
-  doc.text('R. Saravanan (Admin)', startX + w - 30, currY + 7, { align: 'center' });
+  doc.text(`${school.adminName} (Admin)`, startX + w - 30, currY + 7, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(120, 120, 120);

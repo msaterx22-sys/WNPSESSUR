@@ -1058,7 +1058,7 @@ const FeeCardPreviewCard: React.FC<PreviewProps> = ({ student, school, summary }
         <div>
           <h2 className="text-base font-extrabold tracking-wide uppercase">{school.name}</h2>
           <p className="text-xs text-[#D68A6E] font-medium">{school.address} • Ph: {school.phone}</p>
-          <p className="text-[11px] text-neutral-300">Official Student Cum Academic Fee Ledger • 2024-2025</p>
+          <p className="text-[11px] text-neutral-300">Official Student Cum Academic Fee Ledger • {school.academicYear}</p>
         </div>
         <div className="text-right text-[11px] text-neutral-300">
           <span className="font-mono block">{student.admissionNo}</span>
@@ -1207,7 +1207,7 @@ const IdCardPreviewCard: React.FC<{ student: Student; school: any }> = ({ studen
     <div className="max-w-xs mx-auto border-2 border-[#4F6D7A] rounded-2xl overflow-hidden bg-white shadow-md text-xs">
       <div className="bg-[#2D312E] text-white p-3 text-center">
         <h3 className="font-black text-xs uppercase tracking-wide">{school.name}</h3>
-        <p className="text-[10px] text-[#D68A6E]">Essur - 603301 • ID CARD</p>
+        <p className="text-[10px] text-[#D68A6E]">{school.address} • ID CARD</p>
       </div>
 
       <div className="p-4 flex flex-col items-center space-y-3">

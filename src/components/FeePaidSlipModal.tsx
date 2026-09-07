@@ -293,7 +293,7 @@ export const FeePaidSlipModal: React.FC<FeePaidSlipModalProps> = ({ receipt, onC
               <div className="text-right">
                 <div className="h-10 flex items-end justify-end mb-1">
                   <span className="font-serif italic font-bold text-[#4F6D7A] text-sm underline decoration-[#89A894]">
-                    R. Saravanan
+                          {schoolInfo.adminName}
                   </span>
                 </div>
                 <p className="font-bold text-[#2D312E] text-xs">{schoolInfo.adminName}</p>
@@ -303,7 +303,7 @@ export const FeePaidSlipModal: React.FC<FeePaidSlipModalProps> = ({ receipt, onC
             </div>
 
             <div className="mt-4 pt-2 border-t border-dashed border-[#E2E8E2] text-center text-[10px] text-[#6B7280]">
-              * This is a computer generated school fee receipt issued by Wisdom Nursery & Primary School Office, Essur - 603301.
+              * This is a computer generated school fee receipt issued by {schoolInfo.name} Office, {schoolInfo.address}.
             </div>
           </div>
         </div>
