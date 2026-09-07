@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { useSchool } from '../context/SchoolContext';
 import { Student, StandardClass } from '../types';
 import { 
@@ -19,8 +20,25 @@ import {
   CheckCircle2, 
   AlertCircle,
   Filter,
-  Printer
+  Printer,
+  FileSpreadsheet
 } from 'lucide-react';
+
+const normalizeHeader = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const readCell = (row: Record<string, unknown>, aliases: string[]): string => {
+  const key = Object.keys(row).find(candidate => aliases.includes(normalizeHeader(candidate)));
+  return key ? String(row[key] ?? '').trim() : '';
+};
+
+const readNumber = (value: string, fallback = 0) => {
+  const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const readBoolean = (value: string) => ['true', 'yes', 'y', '1', 'on'].includes(value.toLowerCase());
+
+const today = () => new Date().toISOString().split('T')[0];
 
 interface StudentsViewProps {
   onAddNewStudent: () => void;
@@ -43,12 +61,76 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     getStudentTotalPaid, 
     getStudentPending, 
     deleteStudent,
-    setActiveTab
+    setActiveTab,
+    importStudents,
+    feeStructure
   } = useSchool();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [feeStatusFilter, setFeeStatusFilter] = useState<'all' | 'pending' | 'paid' | 'van' | 'sports'>('all');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      const records = rows.flatMap((row, index) => {
+        const name = readCell(row, ['name', 'studentname', 'student']);
+        const admissionNo = readCell(row, ['admissionno', 'admissionnumber', 'admno', 'admissionid']);
+        const parentPhone = readCell(row, ['parentphone', 'phone', 'phoneno', 'mobileno', 'mobile']);
+        if (!name || !admissionNo || !parentPhone) return [];
+
+        const standard = (readCell(row, ['standard', 'class', 'grade']) || classList[0] || 'LKG').toUpperCase() as StandardClass;
+        const vanFacility = readBoolean(readCell(row, ['vanfacility', 'van', 'transport']));
+        const sportsFacility = readBoolean(readCell(row, ['sportsfacility', 'sports']));
+        const isRte = readBoolean(readCell(row, ['isrte', 'rte', 'rtequota']));
+
+        return [{
+          admissionNo,
+          rollNo: readCell(row, ['rollno', 'rollnumber', 'roll']) || String(index + 1).padStart(2, '0'),
+          name,
+          standard,
+          section: readCell(row, ['section', 'sec']) || 'A',
+          gender: readCell(row, ['gender', 'sex']).toLowerCase() === 'girl' ? 'Girl' as const : 'Boy' as const,
+          parentName: readCell(row, ['parentname', 'fathername', 'guardianname']) || 'Parent',
+          parentPhone,
+          whatsappNumber: readCell(row, ['whatsappnumber', 'whatsapp', 'whatsappno']) || parentPhone,
+          address: readCell(row, ['address']) || 'Essur - 603301',
+          isRte,
+          rteApplicationNo: readCell(row, ['rteapplicationno', 'rteapplication']),
+          rteGovtReimbursed: readBoolean(readCell(row, ['rtegovtreimbursed', 'reimbursed'])),
+          vanFacility,
+          vanRoute: readCell(row, ['vanroute', 'route']),
+          vanFee: vanFacility ? readNumber(readCell(row, ['vanfee', 'transportfee']), 4000) : 0,
+          sportsFacility,
+          sportsFee: sportsFacility ? readNumber(readCell(row, ['sportsfee']), 1200) : 0,
+          tuitionFee: readNumber(readCell(row, ['tuitionfee', 'tuition']), isRte ? 0 : (feeStructure[standard] ?? 0)),
+          otherFee: readNumber(readCell(row, ['otherfee', 'other'])),
+          discount: readNumber(readCell(row, ['discount'])),
+          lateFee: readNumber(readCell(row, ['latefee', 'fine'])),
+          admissionDate: readCell(row, ['admissiondate', 'date']) || today(),
+          bloodGroup: readCell(row, ['bloodgroup', 'blood']),
+          notes: readCell(row, ['notes', 'remarks']),
+        }];
+      });
+
+      if (records.length === 0) {
+        alert('No valid rows found. Required columns are Name, Admission No, and Parent Phone.');
+        return;
+      }
+
+      const result = importStudents(records);
+      alert(`Imported ${result.imported} student${result.imported === 1 ? '' : 's'}. ${result.skipped} duplicate or invalid row${result.skipped === 1 ? '' : 's'} skipped.`);
+    } catch {
+      alert('Could not read this Excel file. Please use .xlsx or .xls format and try again.');
+    }
+  };
 
   const filteredStudents = students.filter(student => {
     const matchesSearch = 
@@ -100,6 +182,22 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportExcel}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-[#F2F4F2] text-[#4F6D7A] border border-[#E2E8E2] font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+              title="Import students from an Excel spreadsheet"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#89A894]" />
+              <span>Import Excel</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('bulk')}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-[#2D312E] hover:bg-[#1F2220] text-white font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"

@@ -25,6 +25,11 @@ interface PaymentInput {
   notes?: string;
 }
 
+export interface StudentImportResult {
+  imported: number;
+  skipped: number;
+}
+
 interface SchoolContextType {
   schoolInfo: SchoolInfo;
   updateSchoolInfo: (info: Partial<SchoolInfo>) => void;
@@ -45,6 +50,7 @@ interface SchoolContextType {
 
   // Student Actions
   addStudent: (studentData: Omit<Student, 'id'>) => Student;
+  importStudents: (studentData: Omit<Student, 'id'>[]) => StudentImportResult;
   updateStudent: (id: string, updates: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
 
@@ -207,6 +213,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setStudents(prev => [newStudent, ...prev]);
     return newStudent;
+  };
+
+  const importStudents = (studentData: Omit<Student, 'id'>[]): StudentImportResult => {
+    const existingAdmissionNumbers = new Set(students.map(student => student.admissionNo.trim().toLowerCase()));
+    const seenAdmissionNumbers = new Set<string>();
+    const recordsToAdd = studentData.filter(student => {
+      const admissionKey = student.admissionNo.trim().toLowerCase();
+      if (!admissionKey || existingAdmissionNumbers.has(admissionKey) || seenAdmissionNumbers.has(admissionKey)) {
+        return false;
+      }
+      seenAdmissionNumbers.add(admissionKey);
+      return true;
+    });
+    const now = Date.now();
+    const newStudents = recordsToAdd.map((student, index) => ({
+      ...student,
+      id: `std-${now}-${index}`,
+    }));
+
+    if (newStudents.length > 0) {
+      setStudents(prev => [...newStudents, ...prev]);
+      const importedStandards = [...new Set(newStudents.map(student => student.standard).filter(Boolean))];
+      setClassList(prev => [...prev, ...importedStandards.filter(standard => !prev.includes(standard))]);
+      setFeeStructure(prev => importedStandards.reduce(
+        (fees, standard) => fees[standard] === undefined ? { ...fees, [standard]: 0 } : fees,
+        prev,
+      ));
+    }
+
+    return {
+      imported: newStudents.length,
+      skipped: studentData.length - newStudents.length,
+    };
   };
 
   const updateStudent = (id: string, updates: Partial<Student>) => {
