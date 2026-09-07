@@ -21,10 +21,15 @@ import {
   BookOpen,
   Package,
   DollarSign
+  ,LogOut
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onLogout: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
   const { 
     schoolInfo, 
     userRole, 
@@ -104,6 +109,14 @@ export const Header: React.FC = () => {
           >
             <RotateCcw className="w-3 h-3" />
             <span className="hidden sm:inline">Reset</span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1 bg-[#3A3F3B] hover:bg-[#D68A6E]/30 text-neutral-300 hover:text-[#D68A6E] px-2 py-0.5 rounded text-xs transition-colors border border-[#4F6D7A]/30"
+            title="Sign out of the school office"
+          >
+            <LogOut className="w-3 h-3" />
+            <span className="hidden sm:inline">Logout</span>
           </button>
 
           {/* Portal Switcher */}

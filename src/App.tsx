@@ -14,9 +14,14 @@ import { ParentPortalView } from './components/ParentPortalView';
 import { PaymentModal } from './components/PaymentModal';
 import { FeePaidSlipModal } from './components/FeePaidSlipModal';
 import { StudentModal } from './components/StudentModal';
+import { OfficeLogin } from './components/OfficeLogin';
 import { Student, PaymentReceipt } from './types';
 
-const MainContent: React.FC = () => {
+interface MainContentProps {
+  onLogout: () => void;
+}
+
+const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
   const { userRole, activeTab, setActiveTab } = useSchool();
 
   // Modals state
@@ -60,7 +65,7 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F7F8F6] text-[#2D312E] flex flex-col font-sans selection:bg-[#89A894]/30 selection:text-[#2D312E]">
-      <Header />
+      <Header onLogout={onLogout} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         {userRole === 'parent' ? (
@@ -176,9 +181,22 @@ const MainContent: React.FC = () => {
 };
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => (
+    sessionStorage.getItem('wisdom_admin_authenticated') === 'true'
+  ));
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('wisdom_admin_authenticated');
+    setIsAuthenticated(false);
+  };
+
   return (
     <SchoolProvider>
-      <MainContent />
+      {isAuthenticated ? (
+        <MainContent onLogout={handleLogout} />
+      ) : (
+        <OfficeLogin onLogin={() => setIsAuthenticated(true)} />
+      )}
     </SchoolProvider>
   );
 }
