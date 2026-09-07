@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-natural-bg: #F7F8F6;
+  --color-natural-surface: #FFFFFF;
+  --color-natural-surface-alt: #F2F4F2;
+  --color-natural-text: #2D312E;
+  --color-natural-muted: #6B7280;
+  --color-natural-border: #E2E8E2;
+  --color-natural-border-light: #F1F3F1;
+  --color-natural-slate: #4F6D7A;
+  --color-natural-slate-hover: #415A65;
+  --color-natural-sage: #89A894;
+  --color-natural-sage-hover: #789683;
+  --color-natural-terracotta: #D68A6E;
+  --color-natural-terracotta-hover: #C5785D;
+  --color-dashboard-blue: #3B82A0;
+  --color-dashboard-gold: #C38A3A;
+  --color-dashboard-green: #4F9B72;
+  --color-dashboard-coral: #D26A5A;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #F7F8F6;
+    color: #2D312E;
+  }
+
+  .dashboard-stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .dashboard-stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--stat-accent);
+  }
+
+  .dashboard-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgb(45 49 46 / 8%);
+  }
+
+  .dashboard-stat-card--blue { --stat-accent: var(--color-dashboard-blue); }
+  .dashboard-stat-card--gold { --stat-accent: var(--color-dashboard-gold); }
+  .dashboard-stat-card--green { --stat-accent: var(--color-dashboard-green); }
+  .dashboard-stat-card--coral { --stat-accent: var(--color-dashboard-coral); }
+}
+
+/* Print styling for official receipts and school fee cards */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .printable-document {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .print-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}

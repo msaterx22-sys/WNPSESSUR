@@ -1,0 +1,320 @@
+import React, { useState } from 'react';
+import { useSchool } from '../context/SchoolContext';
+import { Student, StandardClass } from '../types';
+import { 
+  formatCurrency, 
+  buildWhatsAppPendingNotice, 
+  cleanPhoneNumber 
+} from '../utils/formatters';
+import { 
+  Search, 
+  UserPlus, 
+  Phone, 
+  MessageSquare, 
+  CreditCard, 
+  Edit, 
+  Trash2, 
+  Bus, 
+  Trophy, 
+  CheckCircle2, 
+  AlertCircle,
+  Filter,
+  Printer
+} from 'lucide-react';
+
+interface StudentsViewProps {
+  onAddNewStudent: () => void;
+  onEditStudent: (student: Student) => void;
+  onCollectPayment: (student: Student) => void;
+  onViewFeeCard: (student: Student) => void;
+}
+
+export const StudentsView: React.FC<StudentsViewProps> = ({
+  onAddNewStudent,
+  onEditStudent,
+  onCollectPayment,
+  onViewFeeCard,
+}) => {
+  const { 
+    students, 
+    schoolInfo, 
+    classList,
+    getStudentTotalFee, 
+    getStudentTotalPaid, 
+    getStudentPending, 
+    deleteStudent,
+    setActiveTab
+  } = useSchool();
+
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [feeStatusFilter, setFeeStatusFilter] = useState<'all' | 'pending' | 'paid' | 'van' | 'sports'>('all');
+
+  const filteredStudents = students.filter(student => {
+    const matchesSearch = 
+      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.admissionNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.parentPhone.includes(searchQuery) ||
+      student.parentName.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesClass = selectedClass === 'all' || student.standard === selectedClass;
+
+    const pending = getStudentPending(student);
+    let matchesStatus = true;
+    if (feeStatusFilter === 'pending') matchesStatus = pending > 0;
+    if (feeStatusFilter === 'paid') matchesStatus = pending === 0;
+    if (feeStatusFilter === 'van') matchesStatus = student.vanFacility;
+    if (feeStatusFilter === 'sports') matchesStatus = student.sportsFacility;
+
+    return matchesSearch && matchesClass && matchesStatus;
+  });
+
+  const handleDelete = (student: Student) => {
+    if (window.confirm(`Are you sure you want to delete student "${student.name}" (Adm: ${student.admissionNo})? All associated fee receipts will also be removed.`)) {
+      deleteStudent(student.id);
+    }
+  };
+
+  const handleSendWhatsApp = (student: Student) => {
+    const total = getStudentTotalFee(student);
+    const paid = getStudentTotalPaid(student.id);
+    const pending = getStudentPending(student);
+    const encoded = buildWhatsAppPendingNotice(student, schoolInfo, total, paid, pending);
+    const phone = cleanPhoneNumber(student.whatsappNumber || student.parentPhone);
+    window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+  };
+
+  return (
+    <div className="space-y-5">
+      
+      {/* Search and Filters Header */}
+      <div className="bg-white p-4 rounded-xl border border-[#E2E8E2] shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-[#2D312E]">
+              Student Records & Fee Management ({filteredStudents.length})
+            </h2>
+            <p className="text-xs text-[#6B7280]">
+              Manage admission records, track fees, van cards, edit fees, or phone call parents
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setActiveTab('bulk')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#2D312E] hover:bg-[#1F2220] text-white font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+              title="Open Bulk PDF Print, Download and WhatsApp Dispatch Hub"
+            >
+              <Printer className="w-4 h-4 text-[#89A894]" />
+              <span>Bulk PDF & WhatsApp</span>
+            </button>
+
+            <button
+              onClick={onAddNewStudent}
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#89A894] hover:bg-[#789683] text-white font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Add New Student</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Toolbar */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#E2E8E2]/70">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#6B7280]" />
+            <input
+              type="text"
+              placeholder="Search by student name, admission no, phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs border border-[#E2E8E2] rounded-lg bg-[#FDFDFB] text-[#2D312E] focus:bg-white focus:ring-2 focus:ring-[#89A894] outline-hidden"
+            />
+          </div>
+
+          <div>
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-full py-2 px-3 text-xs border border-[#E2E8E2] rounded-lg bg-[#FDFDFB] text-[#2D312E] font-medium outline-hidden"
+            >
+              <option value="all">All Standards ({classList.join(', ')})</option>
+              {classList.map(c => (
+                <option key={c} value={c}>Class {c}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={feeStatusFilter}
+              onChange={(e) => setFeeStatusFilter(e.target.value as any)}
+              className="w-full py-2 px-3 text-xs border border-[#E2E8E2] rounded-lg bg-[#FDFDFB] text-[#2D312E] font-medium outline-hidden"
+            >
+              <option value="all">All Fee Statuses</option>
+              <option value="pending">Pending Dues Only</option>
+              <option value="paid">Fully Paid Only</option>
+              <option value="van">Van Facility Enrolled</option>
+              <option value="sports">Sports Enrolled</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Student Records Table */}
+      <div className="bg-white rounded-xl border border-[#E2E8E2] shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-[#F2F4F2] text-[#4F6D7A] font-bold border-b border-[#E2E8E2] uppercase tracking-wider">
+              <tr>
+                <th className="py-3 px-4">Student & Class</th>
+                <th className="py-3 px-4">Parent Details</th>
+                <th className="py-3 px-4">Transport / Sports</th>
+                <th className="py-3 px-4 text-right">Total Fee</th>
+                <th className="py-3 px-4 text-right">Paid</th>
+                <th className="py-3 px-4 text-right">Pending</th>
+                <th className="py-3 px-4 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E2E8E2]/60">
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((student) => {
+                  const total = getStudentTotalFee(student);
+                  const paid = getStudentTotalPaid(student.id);
+                  const pending = getStudentPending(student);
+
+                  return (
+                    <tr key={student.id} className="hover:bg-[#F7F8F6]/80 transition-colors">
+                      {/* Student Info */}
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-[#2D312E] text-sm">{student.name}</div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[#6B7280]">
+                          <span className="font-mono text-[11px] bg-[#F2F4F2] text-[#2D312E] px-1.5 py-0.2 rounded border border-[#E2E8E2]">
+                            {student.admissionNo}
+                          </span>
+                          <span className="font-bold text-[#4F6D7A]">
+                            {student.standard} - {student.section}
+                          </span>
+                          <span>(Roll: {student.rollNo})</span>
+                        </div>
+                      </td>
+
+                      {/* Parent details with 1-click Call and WhatsApp */}
+                      <td className="py-3.5 px-4">
+                        <div className="font-medium text-[#2D312E]">{student.parentName}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="font-mono text-[#6B7280]">{student.parentPhone}</span>
+                          <a
+                            href={`tel:${student.parentPhone}`}
+                            title="Call Parent directly"
+                            className="p-1 bg-[#F2F4F2] text-[#4F6D7A] hover:bg-[#E2E8E2] rounded border border-[#E2E8E2] transition-colors"
+                          >
+                            <Phone className="w-3 h-3" />
+                          </a>
+                          <button
+                            onClick={() => handleSendWhatsApp(student)}
+                            title="Send WhatsApp notice"
+                            className="p-1 bg-[#89A894]/15 text-[#4F6D7A] hover:bg-[#89A894]/25 rounded border border-[#89A894]/30 transition-colors"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Facilities */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col gap-1">
+                          {student.vanFacility ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#4F6D7A] bg-[#89A894]/15 px-2 py-0.5 rounded border border-[#89A894]/30 w-fit">
+                              <Bus className="w-3 h-3" /> Van: ₹{student.vanFee}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-[#6B7280]">No Van</span>
+                          )}
+
+                          {student.sportsFacility && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#4F6D7A] bg-[#4F6D7A]/10 px-2 py-0.5 rounded border border-[#4F6D7A]/20 w-fit">
+                              <Trophy className="w-3 h-3" /> Sports: ₹{student.sportsFee}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Total Fee */}
+                      <td className="py-3.5 px-4 text-right font-mono font-medium text-[#2D312E]">
+                        {formatCurrency(total)}
+                      </td>
+
+                      {/* Paid */}
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-[#89A894]">
+                        {formatCurrency(paid)}
+                      </td>
+
+                      {/* Pending */}
+                      <td className="py-3.5 px-4 text-right">
+                        <span className={`font-mono font-bold text-xs ${
+                          pending > 0 ? 'text-[#D68A6E]' : 'text-[#89A894]'
+                        }`}>
+                          {pending > 0 ? formatCurrency(pending) : 'CLEARED'}
+                        </span>
+                        {student.lateFee > 0 && (
+                          <div className="text-[10px] text-[#D68A6E] font-medium">
+                            +{formatCurrency(student.lateFee)} fine
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => onCollectPayment(student)}
+                            className="px-2.5 py-1 bg-[#4F6D7A] hover:bg-[#415A65] text-white font-bold rounded text-[11px] transition-colors shadow-2xs"
+                            title="Collect payment & generate receipt slip"
+                          >
+                            Pay Fee
+                          </button>
+
+                          <button
+                            onClick={() => onViewFeeCard(student)}
+                            className="p-1.5 text-[#4F6D7A] hover:bg-[#F2F4F2] rounded transition-colors"
+                            title="Print Fee Card / Van Pass / Sports Card"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => onEditStudent(student)}
+                            className="p-1.5 bg-[#F2F4F2] hover:bg-[#E2E8E2] text-[#4F6D7A] rounded border border-[#E2E8E2] transition-colors cursor-pointer"
+                            title="Edit Student Information, Fees & Concessions"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(student)}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded border border-rose-200 transition-colors cursor-pointer"
+                            title="Delete Student Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-[#6B7280]">
+                    No student records found matching your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  );
+};
