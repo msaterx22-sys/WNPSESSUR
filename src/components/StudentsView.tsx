@@ -21,10 +21,11 @@ import {
   AlertCircle,
   Filter,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
 
-const normalizeHeader = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+const normalizeHeader = (value: string) => value.trim().toLowerCase().replace(/^\uFEFF/, '').replace(/[^a-z0-9]/g, '');
 
 const readCell = (row: Record<string, unknown>, aliases: string[]): string => {
   const key = Object.keys(row).find(candidate => aliases.includes(normalizeHeader(candidate)));
@@ -38,7 +39,27 @@ const readNumber = (value: string, fallback = 0) => {
 
 const readBoolean = (value: string) => ['true', 'yes', 'y', '1', 'on'].includes(value.toLowerCase());
 
+const readGender = (value: string): 'Boy' | 'Girl' => (
+  ['girl', 'female', 'f'].includes(value.trim().toLowerCase()) ? 'Girl' : 'Boy'
+);
+
+const importHeaderAliases = {
+  name: ['name', 'studentname', 'student', 'studentfullname'],
+  admissionNo: ['admissionno', 'admissionnumber', 'admno', 'admissionid', 'admissioncode'],
+  parentPhone: ['parentphone', 'parentmobile', 'phone', 'phoneno', 'mobileno', 'mobile', 'contactnumber'],
+};
+
+const findImportHeaderRow = (sheet: XLSX.WorkSheet) => {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: false });
+  const headerRow = rows.findIndex(row => {
+    const headers = row.map(cell => normalizeHeader(String(cell ?? '')));
+    return Object.values(importHeaderAliases).filter(aliases => headers.some(header => aliases.includes(header))).length >= 2;
+  });
+  return headerRow >= 0 ? headerRow : 0;
+};
+
 const today = () => new Date().toISOString().split('T')[0];
+type SampleFormat = 'xlsx' | 'xls' | 'csv' | 'numbers';
 
 interface StudentsViewProps {
   onAddNewStudent: () => void;
@@ -69,7 +90,23 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [feeStatusFilter, setFeeStatusFilter] = useState<'all' | 'pending' | 'paid' | 'van' | 'sports'>('all');
+  const [sampleFormat, setSampleFormat] = useState<SampleFormat>('xlsx');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleDownloadImportSample = () => {
+    const sampleRows = [
+      ['Admission Number', 'Name', 'Class', 'PARENTPHONE', 'Father Name', 'Mother Name', 'Date of Birth', 'Gender', 'Address', 'Pin code', 'Blood Group', 'Section', 'Van Facility', 'Van Route', 'Van Fee', 'Sports Facility', 'Sports Fee', 'Tuition Fee', 'Other Fee', 'Discount', 'Late Fee', 'Admission Date', 'WhatsApp Number', 'Is RTE', 'RTE Application No', 'Notes'],
+      ['ADM-2026-001', 'Sample Student', classList[0] || 'LKG', '9876543210', 'Sample Father', 'Sample Mother', '2019-06-15', 'Boy', 'Essur - 603301', '603301', 'O+', 'A', 'No', '', '0', 'No', '0', '', '0', '0', '0', today(), '9876543210', 'No', '', 'Delete this sample row before importing.'],
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(sampleRows);
+    worksheet['!cols'] = sampleRows[0].map(() => ({ wch: 18 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Student Import Template');
+    const isCsv = sampleFormat === 'csv' || sampleFormat === 'numbers';
+    const extension = isCsv ? 'csv' : sampleFormat;
+    const filename = `Wisdom_School_Student_Import_Sample${sampleFormat === 'numbers' ? '_Numbers' : ''}.${extension}`;
+    XLSX.writeFile(workbook, filename, { bookType: isCsv ? 'csv' : sampleFormat });
+  };
 
   const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -77,13 +114,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     if (!file) return;
 
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      const headerRow = findImportHeaderRow(sheet);
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false, range: headerRow });
       const records = rows.flatMap((row, index) => {
-        const name = readCell(row, ['name', 'studentname', 'student']);
-        const admissionNo = readCell(row, ['admissionno', 'admissionnumber', 'admno', 'admissionid']);
-        const parentPhone = readCell(row, ['parentphone', 'phone', 'phoneno', 'mobileno', 'mobile']);
+        const name = readCell(row, importHeaderAliases.name);
+        const admissionNo = readCell(row, importHeaderAliases.admissionNo);
+        const parentPhone = readCell(row, importHeaderAliases.parentPhone);
         if (!name || !admissionNo || !parentPhone) return [];
 
         const standard = (readCell(row, ['standard', 'class', 'grade']) || classList[0] || 'LKG').toUpperCase() as StandardClass;
@@ -97,7 +135,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           name,
           standard,
           section: readCell(row, ['section', 'sec']) || 'A',
-          gender: readCell(row, ['gender', 'sex']).toLowerCase() === 'girl' ? 'Girl' as const : 'Boy' as const,
+          gender: readGender(readCell(row, ['gender', 'sex'])),
           parentName: readCell(row, ['parentname', 'fathername', 'guardianname']) || 'Parent',
           parentPhone,
           whatsappNumber: readCell(row, ['whatsappnumber', 'whatsapp', 'whatsappno']) || parentPhone,
@@ -128,7 +166,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       const result = importStudents(records);
       alert(`Imported ${result.imported} student${result.imported === 1 ? '' : 's'}. ${result.skipped} duplicate or invalid row${result.skipped === 1 ? '' : 's'} skipped.`);
     } catch {
-      alert('Could not read this Excel file. Please use .xlsx or .xls format and try again.');
+      alert('Could not read this file. CSV, XLS, and XLSX files are supported. Native Apple Numbers files must be exported as XLSX or CSV first.');
     }
   };
 
@@ -185,7 +223,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".csv,.xlsx,.xls,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.apple.numbers"
               onChange={handleImportExcel}
               className="hidden"
             />
@@ -197,6 +235,28 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               <FileSpreadsheet className="w-4 h-4 text-[#89A894]" />
               <span>Import Excel</span>
             </button>
+
+            <div className="flex items-center gap-1.5">
+              <select
+                value={sampleFormat}
+                onChange={(event) => setSampleFormat(event.target.value as SampleFormat)}
+                aria-label="Sample import file format"
+                className="py-2 px-2 text-xs border border-[#E2E8E2] rounded-lg bg-white text-[#4F6D7A] font-bold outline-hidden cursor-pointer"
+              >
+                <option value="xlsx">XLSX</option>
+                <option value="xls">XLS</option>
+                <option value="csv">CSV</option>
+                <option value="numbers">Numbers / CSV</option>
+              </select>
+              <button
+                onClick={handleDownloadImportSample}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-[#F2F4F2] text-[#4F6D7A] border border-[#E2E8E2] font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+                title="Download a sample student import file"
+              >
+                <Download className="w-4 h-4 text-[#89A894]" />
+                <span>Download Sample</span>
+              </button>
+            </div>
 
             <button
               onClick={() => setActiveTab('bulk')}
