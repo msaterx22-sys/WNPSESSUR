@@ -1,0 +1,6 @@
+{
+  "name": "Wisdom School Fee Management System",
+  "description": "Student records, fee cards, receipt generator with PDF, WhatsApp & call notifications, and financial reports for Wisdom Nursery and Primary School, Essur.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
