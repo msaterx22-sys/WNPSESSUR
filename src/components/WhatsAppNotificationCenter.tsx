@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSchool } from '../context/SchoolContext';
 import { Student } from '../types';
+import { safeBrowserStorage } from '../utils/browserStorage';
 import { formatCurrency, formatNumber, cleanPhoneNumber, generateUpiUrl } from '../utils/formatters';
 import { 
   MessageSquare, 
@@ -59,26 +60,26 @@ export const WhatsAppNotificationCenter: React.FC = () => {
 
   // Configuration thresholds (persisted in localStorage)
   const [highDueThreshold, setHighDueThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem('wisdom_whatsapp_high_threshold');
+    const saved = safeBrowserStorage.getItem('wisdom_whatsapp_high_threshold');
     return saved ? Number(saved) : 10000;
   });
 
   const [minorDueThreshold, setMinorDueThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem('wisdom_whatsapp_minor_threshold');
+    const saved = safeBrowserStorage.getItem('wisdom_whatsapp_minor_threshold');
     return saved ? Number(saved) : 3000;
   });
 
   const [dueDatePreset, setDueDatePreset] = useState<string>(() => {
-    return localStorage.getItem('wisdom_whatsapp_due_date') || 'Within 5 days';
+    return safeBrowserStorage.getItem('wisdom_whatsapp_due_date') || 'Within 5 days';
   });
 
   const [includeUpiLink, setIncludeUpiLink] = useState<boolean>(() => {
-    const saved = localStorage.getItem('wisdom_whatsapp_include_upi');
+    const saved = safeBrowserStorage.getItem('wisdom_whatsapp_include_upi');
     return saved !== null ? saved === 'true' : true;
   });
 
   const [includeTamilNote, setIncludeTamilNote] = useState<boolean>(() => {
-    const saved = localStorage.getItem('wisdom_whatsapp_include_tamil');
+    const saved = safeBrowserStorage.getItem('wisdom_whatsapp_include_tamil');
     return saved !== null ? saved === 'true' : true;
   });
 
@@ -101,7 +102,7 @@ export const WhatsAppNotificationCenter: React.FC = () => {
   // Sent tracking history (persisted)
   const [sentHistory, setSentHistory] = useState<Record<string, SentRecord>>(() => {
     try {
-      const saved = localStorage.getItem('wisdom_whatsapp_sent_history');
+      const saved = safeBrowserStorage.getItem('wisdom_whatsapp_sent_history');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -386,11 +387,7 @@ Office Admin: *${schoolInfo.adminName}* (${schoolInfo.phone})${tamilClosing}`;
       }
     };
     setSentHistory(updated);
-    try {
-      localStorage.setItem('wisdom_whatsapp_sent_history', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_sent_history', JSON.stringify(updated));
 
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
@@ -417,11 +414,11 @@ Office Admin: *${schoolInfo.adminName}* (${schoolInfo.phone})${tamilClosing}`;
 
   // Save configuration modal changes
   const handleSaveConfig = () => {
-    localStorage.setItem('wisdom_whatsapp_high_threshold', highDueThreshold.toString());
-    localStorage.setItem('wisdom_whatsapp_minor_threshold', minorDueThreshold.toString());
-    localStorage.setItem('wisdom_whatsapp_due_date', dueDatePreset);
-    localStorage.setItem('wisdom_whatsapp_include_upi', includeUpiLink.toString());
-    localStorage.setItem('wisdom_whatsapp_include_tamil', includeTamilNote.toString());
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_high_threshold', highDueThreshold.toString());
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_minor_threshold', minorDueThreshold.toString());
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_due_date', dueDatePreset);
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_include_upi', includeUpiLink.toString());
+    void safeBrowserStorage.saveJson('wisdom_whatsapp_include_tamil', includeTamilNote.toString());
     setShowConfigModal(false);
   };
 
@@ -429,7 +426,7 @@ Office Admin: *${schoolInfo.adminName}* (${schoolInfo.phone})${tamilClosing}`;
   const handleClearSentHistory = () => {
     if (window.confirm('Reset the sent reminders tracking history for this session?')) {
       setSentHistory({});
-      localStorage.removeItem('wisdom_whatsapp_sent_history');
+      void safeBrowserStorage.clearJson('wisdom_whatsapp_sent_history');
     }
   };
 

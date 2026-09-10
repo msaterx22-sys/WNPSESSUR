@@ -14,6 +14,7 @@ import {
   SchoolExpense
 } from '../types';
 import { INITIAL_STUDENTS, INITIAL_RECEIPTS, INITIAL_EXPENSES } from '../data/initialData';
+import { safeBrowserStorage } from '../utils/browserStorage';
 
 interface PaymentInput {
   studentId: string;
@@ -97,13 +98,13 @@ const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
 
 const readStoredValue = <T,>(key: string, fallback: T, isValid?: (value: unknown) => value is T): T => {
   try {
-    const saved = localStorage.getItem(key);
+    const saved = safeBrowserStorage.getItem(key);
     if (!saved) return fallback;
 
     const parsed: unknown = JSON.parse(saved);
     return !isValid || isValid(parsed) ? parsed as T : fallback;
   } catch {
-    localStorage.removeItem(key);
+    safeBrowserStorage.removeItem(key);
     return fallback;
   }
 };
@@ -157,29 +158,29 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [userRole, setUserRole] = useState<'admin' | 'parent'>('admin');
   const [activeStudentPortal, setActiveStudentPortal] = useState<Student | null>(null);
 
-  // Persistence to localStorage
+  // Persistence to browser storage (localStorage with IndexedDB fallback)
   useEffect(() => {
-    localStorage.setItem('wisdom_school_info', JSON.stringify(schoolInfo));
+    void safeBrowserStorage.saveJson('wisdom_school_info', JSON.stringify(schoolInfo));
   }, [schoolInfo]);
 
   useEffect(() => {
-    localStorage.setItem('wisdom_class_list', JSON.stringify(classList));
+    void safeBrowserStorage.saveJson('wisdom_class_list', JSON.stringify(classList));
   }, [classList]);
 
   useEffect(() => {
-    localStorage.setItem('wisdom_fee_structure', JSON.stringify(feeStructure));
+    void safeBrowserStorage.saveJson('wisdom_fee_structure', JSON.stringify(feeStructure));
   }, [feeStructure]);
 
   useEffect(() => {
-    localStorage.setItem('wisdom_students', JSON.stringify(students));
+    void safeBrowserStorage.saveJson('wisdom_students', JSON.stringify(students));
   }, [students]);
 
   useEffect(() => {
-    localStorage.setItem('wisdom_receipts', JSON.stringify(receipts));
+    void safeBrowserStorage.saveJson('wisdom_receipts', JSON.stringify(receipts));
   }, [receipts]);
 
   useEffect(() => {
-    localStorage.setItem('wisdom_expenses', JSON.stringify(expenses));
+    void safeBrowserStorage.saveJson('wisdom_expenses', JSON.stringify(expenses));
   }, [expenses]);
 
   const updateSchoolInfo = (info: Partial<SchoolInfo>) => {
@@ -390,12 +391,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setStudents(INITIAL_STUDENTS);
       setReceipts(INITIAL_RECEIPTS);
       setExpenses(INITIAL_EXPENSES);
-      localStorage.removeItem('wisdom_school_info');
-      localStorage.removeItem('wisdom_class_list');
-      localStorage.removeItem('wisdom_fee_structure');
-      localStorage.removeItem('wisdom_students');
-      localStorage.removeItem('wisdom_receipts');
-      localStorage.removeItem('wisdom_expenses');
+      void safeBrowserStorage.clearJson('wisdom_school_info');
+      void safeBrowserStorage.clearJson('wisdom_class_list');
+      void safeBrowserStorage.clearJson('wisdom_fee_structure');
+      void safeBrowserStorage.clearJson('wisdom_students');
+      void safeBrowserStorage.clearJson('wisdom_receipts');
+      void safeBrowserStorage.clearJson('wisdom_expenses');
     }
   };
 

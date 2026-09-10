@@ -208,15 +208,15 @@ export const CashAuditReports: React.FC<CashAuditReportsProps> = ({ onExportCsv 
       onExportCsv(`Cash_Audit_Expenses_${selectedMonth}`, headers, rows);
     } else if (subTab === 'denomination') {
       const headers = ['Denomination (INR)', 'Count', 'Subtotal (INR)'];
-      const rows = Object.entries(denomCounts).map(([val, cnt]) => [
-        `Rs. ${val}`,
-        cnt,
-        Number(val) * cnt,
-      ]);
-      rows.push(['Total Physical Cash', '-', calculatedPhysicalCash]);
-      rows.push(['System Register Cash', '-', targetDayCash]);
-      rows.push(['Discrepancy (Physical - System)', '-', cashDiscrepancy]);
-      onExportCsv(`Cash_Denomination_Closing_${denominationDate}`, headers, rows);
+      const denomEntries = Object.entries(denomCounts) as Array<[string, number]>;
+      const rows: Array<[string, number, number]> = denomEntries.map(([val, cnt]) => {
+        const numericValue = Number(val);
+        return [`Rs. ${numericValue}`, cnt, numericValue * cnt];
+      });
+      rows.push(['Total Physical Cash', 0, calculatedPhysicalCash]);
+      rows.push(['System Register Cash', 0, targetDayCash]);
+      rows.push(['Discrepancy (Physical - System)', 0, cashDiscrepancy]);
+      onExportCsv(`Cash_Denomination_Closing_${denominationDate}`, headers, rows as (string | number)[][]);
     } else {
       // Reconciliation
       const headers = ['Metric / Head', 'Value (INR)', 'Notes'];
@@ -294,14 +294,14 @@ export const CashAuditReports: React.FC<CashAuditReportsProps> = ({ onExportCsv 
       doc.save(`Cash_Expense_Audit_${selectedMonth}.pdf`);
     } else if (subTab === 'denomination') {
       const headers = ['Denomination Note / Coin', 'Notes Count', 'Subtotal (INR)'];
-      const rows = Object.entries(denomCounts).map(([val, cnt]) => [
-        `Rs. ${val} Note`,
-        cnt,
-        formatCurrency(Number(val) * cnt),
-      ]);
-      rows.push(['Total Physical Cash Counted', '', formatCurrency(calculatedPhysicalCash)]);
-      rows.push(['Daily System Register Recorded', '', formatCurrency(targetDayCash)]);
-      rows.push(['Cash Discrepancy (Physical - System)', '', formatCurrency(cashDiscrepancy)]);
+      const denomEntries = Object.entries(denomCounts) as Array<[string, number]>;
+      const rows: Array<[string, number, string]> = denomEntries.map(([val, cnt]) => {
+        const numericValue = Number(val);
+        return [`Rs. ${numericValue} Note`, cnt, formatCurrency(numericValue * cnt)];
+      });
+      rows.push(['Total Physical Cash Counted', 0, formatCurrency(calculatedPhysicalCash)]);
+      rows.push(['Daily System Register Recorded', 0, formatCurrency(targetDayCash)]);
+      rows.push(['Cash Discrepancy (Physical - System)', 0, formatCurrency(cashDiscrepancy)]);
       const doc = generateReportTablePdf(
         `Daily Cash Denomination & Physical Closing Register - ${denominationDate}`,
         `Verified by Admin: ${schoolInfo.adminName} | Closing Status: ${cashDiscrepancy === 0 ? 'PERFECTLY BALANCED' : 'DISCREPANCY DETECTED'}`,
