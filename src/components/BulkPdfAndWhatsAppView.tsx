@@ -7,7 +7,9 @@ import {
   generateBulkDemandNoticesPdf, 
   generateBulkIdCardsPdf,
   generateStudentFeeSlipPdf,
-  StudentFeeSummary
+  generatePendingBalancePdf,
+  StudentFeeSummary,
+  PendingBalancePdfMode
 } from '../utils/pdfGenerator';
 import { 
   Printer, 
@@ -71,6 +73,7 @@ export const BulkPdfAndWhatsAppView: React.FC = () => {
 
   // PDF settings
   const [docType, setDocType] = useState<BulkDocType>('feecard');
+  const [pendingPdfMode, setPendingPdfMode] = useState<PendingBalancePdfMode>('all');
   const [previewStudentIndex, setPreviewStudentIndex] = useState<number>(0);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [downloadSuccessMsg, setDownloadSuccessMsg] = useState<string | null>(null);
@@ -185,6 +188,11 @@ export const BulkPdfAndWhatsAppView: React.FC = () => {
         } else {
           doc = generateBulkDemandNoticesPdf(selectedStudents, schoolInfo, getFeeSummary, paymentDeadline);
           filename = `Wisdom_School_Transport_Passes_Bulk.pdf`;
+        }
+
+        if (docType === 'feecard' && pendingPdfMode !== 'all') {
+          doc = generatePendingBalancePdf(selectedStudents, schoolInfo, getFeeSummary, pendingPdfMode, paymentDeadline);
+          filename = `Wisdom_School_${pendingPdfMode.toUpperCase()}_Pending_Balance_${selectedStudents.length}_Students.pdf`;
         }
 
         doc.save(filename);
@@ -542,6 +550,26 @@ Office Admin: ${schoolInfo.adminName} (${schoolInfo.phone})${tamilClosing}`;
                     <span>Student ID Badges (Sheet of 4)</span>
                   </button>
                 </div>
+
+                {docType === 'feecard' && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-[#6B7280]">Pending balance PDF mode:</span>
+                    {(['all', 'tuition', 'van', 'sports'] as PendingBalancePdfMode[]).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setPendingPdfMode(mode)}
+                        className={`px-2.5 py-1.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                          pendingPdfMode === mode
+                            ? 'bg-[#4F6D7A] text-white border-[#4F6D7A]'
+                            : 'bg-[#FDFDFB] text-[#2D312E] border-[#E2E8E2] hover:bg-[#F2F4F2]'
+                        }`}
+                      >
+                        {mode === 'all' ? 'All' : mode === 'tuition' ? 'Tuition Only' : mode === 'van' ? 'Van Only' : 'Sports Only'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -701,6 +729,7 @@ Office Admin: ${schoolInfo.adminName} (${schoolInfo.phone})${tamilClosing}`;
                       student={activePreviewStudent} 
                       school={schoolInfo} 
                       summary={getFeeSummary(activePreviewStudent)} 
+                      mode={pendingPdfMode}
                     />
                   )}
 
@@ -1048,9 +1077,10 @@ interface PreviewProps {
   school: any;
   summary: StudentFeeSummary;
   dueDate?: string;
+  mode?: PendingBalancePdfMode;
 }
 
-const FeeCardPreviewCard: React.FC<PreviewProps> = ({ student, school, summary }) => {
+const FeeCardPreviewCard: React.FC<PreviewProps> = ({ student, school, summary, mode = 'all' }) => {
   return (
     <div className="border border-[#4F6D7A]/40 rounded-xl p-6 bg-white text-[#2D312E] space-y-5">
       {/* Top Banner */}
@@ -1083,17 +1113,17 @@ const FeeCardPreviewCard: React.FC<PreviewProps> = ({ student, school, summary }
       {/* Financial Overview Tiles */}
       <div className="grid grid-cols-3 gap-3 text-xs text-center font-mono">
         <div className="p-3 bg-[#F2F4F2] rounded-lg border border-[#E2E8E2]">
-          <span className="text-[10px] text-[#6B7280] block uppercase font-sans font-bold">Total Annual Fee</span>
-          <span className="text-base font-extrabold text-[#2D312E]">{formatCurrency(summary.totalFee)}</span>
+          <span className="text-[10px] text-[#6B7280] block uppercase font-sans font-bold">{mode === 'all' ? 'Total Annual Fee' : mode === 'tuition' ? 'Tuition Fee' : mode === 'van' ? 'Van Fee' : 'Sports Fee'}</span>
+          <span className="text-base font-extrabold text-[#2D312E]">{formatCurrency(mode === 'all' ? summary.totalFee : mode === 'tuition' ? (student.tuitionFee || 0) : mode === 'van' ? (student.vanFacility ? (student.vanFee || 0) : 0) : (student.sportsFacility ? (student.sportsFee || 0) : 0))}</span>
         </div>
         <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-          <span className="text-[10px] text-emerald-800 block uppercase font-sans font-bold">Total Paid Till Date</span>
-          <span className="text-base font-extrabold text-emerald-700">{formatCurrency(summary.totalPaid)}</span>
+          <span className="text-[10px] text-emerald-800 block uppercase font-sans font-bold">{mode === 'all' ? 'Total Paid Till Date' : mode === 'tuition' ? 'Tuition Paid' : mode === 'van' ? 'Van Paid' : 'Sports Paid'}</span>
+          <span className="text-base font-extrabold text-emerald-700">{formatCurrency(mode === 'all' ? summary.totalPaid : mode === 'tuition' ? summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.tuition || 0), 0) : mode === 'van' ? summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.van || 0), 0) : summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.sports || 0), 0))}</span>
         </div>
         <div className={`p-3 rounded-lg border ${summary.pendingFee > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-          <span className="text-[10px] block uppercase font-sans font-bold text-[#6B7280]">Pending Balance</span>
+          <span className="text-[10px] block uppercase font-sans font-bold text-[#6B7280]">{mode === 'all' ? 'Pending Balance' : mode === 'tuition' ? 'Tuition Pending' : mode === 'van' ? 'Van Pending' : 'Sports Pending'}</span>
           <span className={`text-base font-extrabold ${summary.pendingFee > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-            {formatCurrency(summary.pendingFee)}
+            {formatCurrency(mode === 'all' ? summary.pendingFee : mode === 'tuition' ? Math.max(0, (student.tuitionFee || 0) - summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.tuition || 0), 0)) : mode === 'van' ? (student.vanFacility ? Math.max(0, (student.vanFee || 0) - summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.van || 0), 0)) : 0) : (student.sportsFacility ? Math.max(0, (student.sportsFee || 0) - summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.sports || 0), 0)) : 0))}
           </span>
         </div>
       </div>

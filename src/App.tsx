@@ -64,10 +64,10 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F6] text-[#2D312E] flex flex-col font-sans selection:bg-[#89A894]/30 selection:text-[#2D312E]">
+    <div className="flex min-h-screen flex-col bg-transparent font-sans text-[#2D312E] selection:bg-[#89A894]/30 selection:text-[#2D312E]">
       <Header onLogout={onLogout} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
         {userRole === 'parent' ? (
           <ParentPortalView 
             onViewReceipt={(receipt) => setActiveReceiptForSlip(receipt)}
@@ -168,7 +168,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
       )}
 
       {/* Simple Footer (hidden on print) */}
-      <footer className="no-print border-t border-[#E2E8E2] bg-[#FDFDFB] py-4 px-6 text-center text-xs text-[#6B7280]">
+      <footer className="no-print mt-8 border-t border-[#E2E8E2] bg-white/80 px-6 py-5 text-center text-xs text-[#6B7280] backdrop-blur">
         <p>
           <strong className="text-[#2D312E]">Wisdom Nursery and Primary School</strong> • Essur - 603301, Tamil Nadu • Office Admin: <strong className="text-[#2D312E]">R. SARAVANAN</strong> (+91 9176593129)
         </p>

@@ -28,6 +28,7 @@ export interface SchoolInfo {
   tagline: string;
   academicYear: string;
   logoUrl?: string;
+  principalSignatureUrl?: string;
   adminName: string;
   location: string;
   address: string;

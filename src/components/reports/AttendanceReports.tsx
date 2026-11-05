@@ -3,7 +3,6 @@ import { useSchool } from '../../context/SchoolContext';
 import { 
   INITIAL_CLASS_ATTENDANCE, 
   INITIAL_STAFF_ATTENDANCE, 
-  INITIAL_DAILY_STUDENT_ATTENDANCE,
   DailyAttendanceDetail 
 } from '../../data/reportsData';
 import { 
@@ -35,13 +34,11 @@ interface AttendanceReportsProps {
 }
 
 export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCsv }) => {
-  const { students, classList, schoolInfo } = useSchool();
+  const { students, classList, schoolInfo, dailyAttendance, setDailyAttendance } = useSchool();
 
   const [subTab, setSubTab] = useState<'student-summary' | 'staff-summary' | 'daily-detail'>('student-summary');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dailyRecords, setDailyRecords] = useState<DailyAttendanceDetail[]>(INITIAL_DAILY_STUDENT_ATTENDANCE);
-
   // Edit record state
   const [editingRecord, setEditingRecord] = useState<DailyAttendanceDetail | null>(null);
 
@@ -54,9 +51,10 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
   interface RollCallItem {
     studentId: string;
     admissionNo: string;
-    rollNo: number;
+    rollNo: string;
     studentName: string;
     standard: string;
+    section: string;
     parentPhone: string;
     status: 'Present' | 'Absent' | 'Late';
     reason: string;
@@ -64,6 +62,8 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
 
   const [rollCallList, setRollCallList] = useState<RollCallItem[]>([]);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [pendingWhatsAppRecordId, setPendingWhatsAppRecordId] = useState<string | null>(null);
+  const [notificationFeedback, setNotificationFeedback] = useState<string | null>(null);
 
   // Initialize roll call roster whenever class or modal opens
   const openRollCallModal = () => {
@@ -74,52 +74,17 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
 
   const populateRollCall = (cls: string) => {
     const classStudents = students.filter(s => s.standard === cls);
-    if (classStudents.length > 0) {
-      setRollCallList(classStudents.map((s, idx) => ({
-        studentId: s.id,
-        admissionNo: s.admissionNo,
-        rollNo: idx + 1,
-        studentName: s.name,
-        standard: s.standard,
-        parentPhone: s.parentPhone || schoolInfo.phone,
-        status: 'Present',
-        reason: '',
-      })));
-    } else {
-      // Fallback if class has no students in context yet
-      setRollCallList([
-        {
-          studentId: 'temp-1',
-          admissionNo: 'WNS-2024-01',
-          rollNo: 1,
-          studentName: 'A. Kavin Kumar',
-          standard: cls,
-          parentPhone: '9840123456',
-          status: 'Present',
-          reason: '',
-        },
-        {
-          studentId: 'temp-2',
-          admissionNo: 'WNS-2024-02',
-          rollNo: 2,
-          studentName: 'S. Nithya Shree',
-          standard: cls,
-          parentPhone: '9840234567',
-          status: 'Present',
-          reason: '',
-        },
-        {
-          studentId: 'temp-3',
-          admissionNo: 'WNS-2024-03',
-          rollNo: 3,
-          studentName: 'M. Dhilip',
-          standard: cls,
-          parentPhone: '9840345678',
-          status: 'Present',
-          reason: '',
-        },
-      ]);
-    }
+    setRollCallList(classStudents.map((student, index) => ({
+      studentId: student.id,
+      admissionNo: student.admissionNo,
+      rollNo: student.rollNo || String(index + 1),
+      studentName: student.name,
+      standard: student.standard,
+      section: student.section,
+      parentPhone: student.parentPhone || schoolInfo.phone,
+      status: 'Present',
+      reason: '',
+    })));
   };
 
   const handleRollCallClassChange = (newCls: string) => {
@@ -140,14 +105,19 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
   };
 
   const handleSaveRollCall = () => {
+    if (rollCallList.length === 0) {
+      setSaveSuccessMessage('There are no enrolled students in this class to mark.');
+      return;
+    }
+
     const newRecords: DailyAttendanceDetail[] = rollCallList.map((item, idx) => ({
       id: `daily-${rollCallDate}-${item.admissionNo}-${Date.now() + idx}`,
+      date: rollCallDate,
       studentName: item.studentName,
       admissionNo: item.admissionNo,
       rollNo: item.rollNo,
       standard: item.standard,
-      section: 'A',
-      date: rollCallDate,
+      section: item.section,
       status: item.status,
       reason: item.reason || (item.status === 'Present' ? 'Present on time' : 'Uninformed absence'),
       parentPhone: item.parentPhone,
@@ -155,7 +125,10 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
     }));
 
     // Prepend to daily records and update date filter
-    setDailyRecords(prev => [...newRecords, ...prev.filter(r => !(r.date === rollCallDate && r.standard === rollCallClass))]);
+    setDailyAttendance(prev => [
+      ...newRecords,
+      ...prev.filter(record => !(record.date === rollCallDate && record.standard === rollCallClass)),
+    ]);
     setSelectedDate(rollCallDate);
     setSelectedClass(rollCallClass);
     setSubTab('daily-detail');
@@ -177,24 +150,35 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
   const staffOverallPercent = (staffPresentSum / staffWorkingSum) * 100;
 
   // Filter daily detail
-  const filteredDaily = dailyRecords.filter(r => {
+  const filteredDaily = dailyAttendance.filter(r => {
     const matchClass = selectedClass === 'all' || r.standard === selectedClass;
     const matchDate = !selectedDate || r.date === selectedDate;
     return matchClass && matchDate;
   });
 
   const handleNotifyWhatsApp = (record: DailyAttendanceDetail) => {
-    const text = `Dear Parent, This is an attendance notification from Wisdom Nursery and Primary School, Essur for ${record.studentName} (${record.standard}-${record.section}) on ${selectedDate}: Marked ${record.status.toUpperCase()}${record.reason ? ` (${record.reason})` : ''}. For queries contact office: ${schoolInfo.phone}.`;
+    const text = `Dear Parent, This is an attendance notification from Wisdom Nursery and Primary School, Essur for ${record.studentName} (${record.standard}-${record.section}) on ${record.date || selectedDate}: Marked ${record.status.toUpperCase()}${record.reason ? ` (${record.reason})` : ''}. For queries contact office: ${schoolInfo.phone}.`;
     const url = `https://wa.me/91${cleanPhoneNumber(record.parentPhone)}?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    const whatsappWindow = window.open(url, '_blank');
+    if (!whatsappWindow) {
+      setNotificationFeedback('WhatsApp could not be opened. Allow pop-ups and try again.');
+      return;
+    }
 
-    setDailyRecords(prev => prev.map(item => item.id === record.id ? { ...item, notifiedWhatsApp: true } : item));
+    setPendingWhatsAppRecordId(record.id);
+    setNotificationFeedback(`WhatsApp message opened for ${record.studentName}. Mark notified only after sending it.`);
+  };
+
+  const handleMarkNotified = (record: DailyAttendanceDetail) => {
+    setDailyAttendance(prev => prev.map(item => item.id === record.id ? { ...item, notifiedWhatsApp: true } : item));
+    setPendingWhatsAppRecordId(null);
+    setNotificationFeedback(`${record.studentName} marked as notified.`);
   };
 
   const handleBatchNotifyAbsentees = () => {
     const absentees = filteredDaily.filter(r => r.status !== 'Present' && !r.notifiedWhatsApp);
     if (absentees.length === 0) {
-      alert('All absentees for this date/class have already been notified or there are no absentees!');
+      alert('There are no unnotified absentees for this date/class.');
       return;
     }
     // Open first absentee and prompt
@@ -296,14 +280,14 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
 
   const handleDeleteDailyRecord = (id: string) => {
     if (window.confirm('Are you sure you want to delete this attendance record from the register?')) {
-      setDailyRecords(prev => prev.filter(r => r.id !== id));
+      setDailyAttendance(prev => prev.filter(r => r.id !== id));
     }
   };
 
   const handleSaveEditedRecord = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRecord) return;
-    setDailyRecords(prev => prev.map(r => r.id === editingRecord.id ? editingRecord : r));
+    setDailyAttendance(prev => prev.map(r => r.id === editingRecord.id ? editingRecord : r));
     setEditingRecord(null);
   };
 
@@ -588,7 +572,7 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition-colors cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Notify All Absentees</span>
+                <span>Open Next Absentee Reminder</span>
               </button>
 
               <button
@@ -600,6 +584,12 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
               </button>
             </div>
           </div>
+
+          {notificationFeedback && (
+            <p role="status" className="rounded-lg border border-[#89A894]/30 bg-[#89A894]/10 px-3 py-2 text-[11px] font-medium text-[#2D312E]">
+              {notificationFeedback}
+            </p>
+          )}
 
           <div className="bg-white rounded-xl border border-[#E2E8E2] shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
@@ -650,17 +640,30 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
                         </td>
                         <td className="no-print py-2.5 px-3 text-center">
                           {r.status !== 'Present' ? (
-                            <button
-                              onClick={() => handleNotifyWhatsApp(r)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-colors cursor-pointer ${
-                                r.notifiedWhatsApp
-                                  ? 'bg-gray-100 text-[#6B7280]'
-                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              }`}
-                            >
-                              <MessageSquare className="w-3 h-3 text-emerald-600" />
-                              <span>{r.notifiedWhatsApp ? 'Notified' : 'Send WhatsApp'}</span>
-                            </button>
+                            r.notifiedWhatsApp ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-[#6B7280]">
+                                <Check className="h-3 w-3" />
+                                Notified
+                              </span>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1">
+                                <button
+                                  onClick={() => handleNotifyWhatsApp(r)}
+                                  className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 transition-colors hover:bg-emerald-100"
+                                >
+                                  <MessageSquare className="h-3 w-3 text-emerald-600" />
+                                  Open WhatsApp
+                                </button>
+                                {pendingWhatsAppRecordId === r.id && (
+                                  <button
+                                    onClick={() => handleMarkNotified(r)}
+                                    className="text-[10px] font-semibold text-[#4F6D7A] underline"
+                                  >
+                                    Mark as sent
+                                  </button>
+                                )}
+                              </div>
+                            )
                           ) : (
                             <span className="text-[10px] text-[#6B7280]">Attended</span>
                           )}
@@ -889,6 +892,9 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ onExportCs
 
             {/* Student Roll Call List */}
             <div className="p-4 overflow-y-auto flex-1 divide-y divide-[#E2E8E2]">
+              {rollCallList.length === 0 && (
+                <p className="py-8 text-center text-xs text-[#6B7280]">No students are enrolled in this class yet.</p>
+              )}
               {rollCallList.map((item) => (
                 <div key={item.studentId} className="py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-3">

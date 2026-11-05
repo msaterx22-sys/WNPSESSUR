@@ -2,15 +2,15 @@ import React, { useState, useRef } from 'react';
 import { useSchool } from '../context/SchoolContext';
 import { Student } from '../types';
 import { formatCurrency, formatNumber } from '../utils/formatters';
+import { generateStudentCardPdf } from '../utils/pdfGenerator';
 import { 
   Printer, 
+  Download,
   Bus, 
   Trophy, 
   CreditCard, 
   Search, 
   Camera, 
-  Upload, 
-  ShieldCheck, 
   Contact, 
   QrCode,
   CheckCircle2,
@@ -49,7 +49,57 @@ export const FeeCardsStudio: React.FC = () => {
   const currentStudent = students.find(s => s.id === selectedStudentId) || filteredStudents[0] || students[0];
 
   const handlePrint = () => {
+    let printStyle: HTMLStyleElement | undefined;
+    const cleanup = () => {
+      document.body.classList.remove('printing-idcard');
+      printStyle?.remove();
+    };
+
+    if (cardType === 'idcard') {
+      document.body.classList.add('printing-idcard');
+      printStyle = document.createElement('style');
+      printStyle.textContent = '@page { size: 85.6mm 54mm !important; margin: 0 !important; }';
+      document.head.appendChild(printStyle);
+      window.addEventListener('afterprint', cleanup, { once: true });
+    }
+
     window.print();
+  };
+
+  const handleDownloadPdf = () => {
+    const cardNames = {
+      idcard: 'Student_ID_Card',
+      fee: 'Student_Fee_Card',
+      van: 'Student_Van_Fee_Card',
+      sports: 'Student_Sports_Fee_Card',
+    };
+    const filenameAdmissionNo = currentStudent.admissionNo.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_');
+
+    try {
+      const doc = generateStudentCardPdf(cardType, currentStudent, schoolInfo, {
+        totalFee,
+        totalPaid,
+        pendingFee: pending,
+        receipts,
+      });
+      const pdfBlob = doc.output('blob');
+      if (pdfBlob.size === 0) {
+        throw new Error('The generated PDF is empty.');
+      }
+
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `${cardNames[cardType]}_${filenameAdmissionNo}.pdf`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Unable to generate the student card PDF.', error);
+      window.alert(`Unable to download the PDF: ${message}`);
+    }
   };
 
   const handleQuickPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,6 +173,14 @@ export const FeeCardsStudio: React.FC = () => {
             >
               <Layers className="w-4 h-4 text-[#89A894]" />
               <span>Bulk Print / Download All (PDF)</span>
+            </button>
+
+            <button
+              onClick={handleDownloadPdf}
+              className="flex items-center gap-1.5 bg-[#89A894] hover:bg-[#789683] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download PDF</span>
             </button>
 
             <button
@@ -233,148 +291,66 @@ export const FeeCardsStudio: React.FC = () => {
         
         {/* TYPE 0: OFFICIAL STUDENT IDENTITY CARD (ID CARD) */}
         {cardType === 'idcard' && (
-          <div className="printable-document bg-white border-2 border-[#4F6D7A] rounded-2xl max-w-md w-full p-5 text-slate-900 shadow-lg relative overflow-hidden">
-            {/* Top Bar with School Header */}
-            <div className="bg-[#4F6D7A] text-white -m-5 mb-4 p-4 text-center relative border-b-2 border-[#D68A6E]">
-              <div className="flex items-center justify-center gap-3">
-                <img 
-                  src={schoolInfo.logoUrl || '/school_logo.jpg'}
-                  alt="Wisdom School" 
-                  className="w-13 h-13 rounded-full border-2 border-white object-cover shadow-xs shrink-0" 
-                />
-                <div className="text-left">
-                  <h1 className="text-sm font-black tracking-wide uppercase font-serif leading-tight text-white">
-                    {schoolInfo.name}
-                  </h1>
-                  <p className="text-[10px] text-[#F2F4F2]/90 font-medium">
-                    {schoolInfo.address}
-                  </p>
-                  <p className="text-[9px] text-white/80">
-                    Ph: {schoolInfo.phone} • {schoolInfo.email}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-2 inline-block bg-[#D68A6E] text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-widest shadow-2xs">
-                STUDENT IDENTITY CARD • {schoolInfo.academicYear}
+          <div className="printable-document printable-document--idcard flex flex-col overflow-hidden rounded-lg border border-[#4F6D7A] bg-white p-2 text-slate-900 shadow-lg">
+            <div className="flex h-[11mm] items-center justify-center gap-2 rounded-t-md bg-[#4F6D7A] px-2 text-white">
+              <img src={schoolInfo.logoUrl || '/school_logo.jpg'} alt="School logo" className="h-8 w-8 shrink-0 rounded-full border border-white object-cover" />
+              <div className="min-w-0 text-center">
+                <h1 className="truncate text-[9px] font-black uppercase leading-tight">{schoolInfo.name}</h1>
+                <p className="truncate text-[6px]">{schoolInfo.address} | {schoolInfo.phone}</p>
+                <p className="text-[6px] font-bold text-[#F2F4F2]">STUDENT ID CARD · {schoolInfo.academicYear}</p>
               </div>
             </div>
 
-            {/* Photo & Primary Bio */}
-            <div className="flex items-start gap-4 mb-4">
-              {/* Student Photo */}
-              <div className="relative group shrink-0">
+            <div className="flex flex-1 gap-2 pt-1.5">
+              <div
+                onClick={() => !currentStudent.photoUrl && photoFileInputRef.current?.click()}
+                className="relative flex h-[19mm] w-[15mm] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-[#89A894] bg-[#F2F4F2]"
+                title="Click to upload student photo"
+              >
                 {currentStudent.photoUrl ? (
-                  <div className="relative">
-                    <img
-                      src={currentStudent.photoUrl}
-                      alt={currentStudent.name}
-                      className="w-24 h-28 object-cover rounded-lg border-2 border-[#4F6D7A] shadow-xs"
-                    />
+                  <>
+                    <img src={currentStudent.photoUrl} alt={currentStudent.name} className="h-full w-full object-cover" />
                     <button
-                      onClick={handleRemovePhoto}
-                      className="no-print absolute -top-1.5 -right-1.5 bg-[#D68A6E] text-white p-1 rounded-full shadow hover:bg-[#C07055] transition-colors"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemovePhoto();
+                      }}
+                      className="no-print absolute right-0 top-0 rounded-bl bg-[#D68A6E] p-0.5 text-white"
                       title="Remove photo"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="h-2 w-2" />
                     </button>
-                  </div>
+                  </>
                 ) : (
-                  <div
-                    onClick={() => photoFileInputRef.current?.click()}
-                    className="w-24 h-28 border-2 border-dashed border-[#89A894] rounded-lg bg-[#F2F4F2] flex flex-col items-center justify-center p-2 text-center cursor-pointer hover:bg-[#89A894]/15 transition-colors"
-                  >
-                    <Camera className="w-6 h-6 text-[#89A894] mb-1" />
-                    <span className="text-[10px] font-bold text-[#4F6D7A] leading-tight">
-                      Upload Photo
-                    </span>
-                    <span className="text-[8px] text-[#6B7280]">Click to add</span>
-                  </div>
+                  <span className="text-center text-[6px] font-bold text-[#4F6D7A]">UPLOAD PHOTO</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 leading-[1.25]">
+                <h2 className="truncate text-[10px] font-black">{currentStudent.name}</h2>
+                <p className="text-[7px] font-bold text-[#4F6D7A]">
+                  {currentStudent.standard} - {currentStudent.section} | Roll {currentStudent.rollNo}
+                </p>
+                <p className="truncate text-[6.5px]">Admission: <strong>{currentStudent.admissionNo}</strong></p>
+                <p className="truncate text-[6.5px]">Parent: <strong>{currentStudent.parentName}</strong></p>
+                <p className="truncate text-[6.5px]">Contact: <strong>{currentStudent.parentPhone}</strong></p>
+                <p className="text-[6.5px]">Blood group: <strong>{currentStudent.bloodGroup || 'N/A'}</strong></p>
+                {currentStudent.vanFacility && (
+                  <p className="truncate text-[6px] text-[#D68A6E]">Van: {currentStudent.vanRoute || 'School Route'}</p>
                 )}
                 {currentStudent.isRte && (
-                  <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#4F6D7A] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap shadow-2xs">
-                    RTE QUOTA
-                  </span>
+                  <p className="truncate text-[6px] font-bold text-[#4F6D7A]">RTE: {currentStudent.rteApplicationNo || 'Approved'}</p>
                 )}
               </div>
-
-              {/* Student Details */}
-              <div className="flex-1 space-y-1 text-xs">
-                <h2 className="text-base font-black text-[#2D312E] leading-tight">
-                  {currentStudent.name}
-                </h2>
-                
-                <div className="flex items-center gap-2 pt-0.5">
-                  <span className="bg-[#4F6D7A]/10 text-[#4F6D7A] font-bold px-2 py-0.5 rounded text-xs border border-[#4F6D7A]/20">
-                    Class: {currentStudent.standard} - {currentStudent.section}
-                  </span>
-                  <span className="text-slate-500 font-mono text-[11px]">
-                    Roll: <strong>{currentStudent.rollNo}</strong>
-                  </span>
-                </div>
-
-                <div className="pt-1.5 space-y-1 text-[11px] text-[#2D312E]">
-                  <div>
-                    <span className="text-[#6B7280]">Admission No:</span>{' '}
-                    <strong className="font-mono text-[#4F6D7A]">{currentStudent.admissionNo}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#6B7280]">Parent / Guardian:</span>{' '}
-                    <strong>{currentStudent.parentName}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#6B7280]">Contact Mobile:</span>{' '}
-                    <strong className="font-mono">{currentStudent.parentPhone}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#6B7280]">Blood Group:</span>{' '}
-                    <strong className="font-mono text-rose-700 bg-rose-50 px-1 rounded">{currentStudent.bloodGroup || 'B+'}</strong>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* RTE Banner if applicable */}
-            {currentStudent.isRte && (
-              <div className="bg-[#89A894]/20 border border-[#89A894] rounded-lg p-2 mb-3 text-[11px] flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-bold text-[#2D312E]">
-                  <ShieldCheck className="w-4 h-4 text-[#4F6D7A]" />
-                  <span>Right to Education (RTE) Scheme</span>
-                </div>
-                <span className="font-mono text-[10px] text-[#4F6D7A] font-bold">
-                  {currentStudent.rteApplicationNo || 'Govt 25% Free Seat'}
-                </span>
+            <div className="mt-auto flex items-center justify-between border-t border-[#E2E8E2] pt-1">
+              <div className="flex items-center gap-1 text-[#4F6D7A]">
+                <QrCode className="h-5 w-5" />
+                <span className="font-mono text-[5px] leading-tight">WISDOM-{currentStudent.admissionNo}<br />VALID {schoolInfo.academicYear}</span>
               </div>
-            )}
-
-            {/* Address & Emergency Info */}
-            <div className="bg-[#F2F4F2] border border-[#E2E8E2] rounded-lg p-2.5 mb-4 text-[10px] space-y-1 text-[#2D312E]">
-              <div>
-                <span className="text-[#6B7280]">Address:</span> {currentStudent.address}
-              </div>
-              {currentStudent.vanFacility && (
-                <div className="flex items-center gap-1 text-[#D68A6E] font-semibold">
-                  <Bus className="w-3 h-3" />
-                  <span>School Van Route: {currentStudent.vanRoute || 'Essur Main Route'}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Signatures & Barcode/QR footer */}
-            <div className="flex items-end justify-between border-t border-[#E2E8E2] pt-2 text-[10px]">
-              <div className="flex items-center gap-1.5 text-[#6B7280]">
-                <QrCode className="w-8 h-8 text-[#4F6D7A]" />
-                <div className="font-mono text-[8px] leading-tight">
-                  <div>WISDOM-{currentStudent.admissionNo}</div>
-                  <div>VALID {schoolInfo.academicYear}</div>
-                </div>
-              </div>
-
               <div className="text-right">
-                <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
-                  {schoolInfo.adminName}
-                </span>
-                <strong className="text-slate-900 block text-[11px]">{schoolInfo.adminName}</strong>
-                <span className="text-[9px] text-slate-500">Correspondent / Head</span>
+                <strong className="block truncate text-[7px]">{schoolInfo.adminName}</strong>
+                <span className="block text-[5.5px] text-slate-500">Principal / Correspondent</span>
               </div>
             </div>
           </div>
@@ -591,6 +567,9 @@ export const FeeCardsStudio: React.FC = () => {
               </div>
 
               <div className="text-right">
+                {schoolInfo.principalSignatureUrl && (
+                  <img src={schoolInfo.principalSignatureUrl} alt="Principal signature" className="ml-auto mb-1 h-8 max-w-28 object-contain" />
+                )}
                 <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
                   {schoolInfo.adminName}
                 </span>
@@ -709,8 +688,11 @@ export const FeeCardsStudio: React.FC = () => {
                 <div className="h-6"></div>
               </div>
               <div className="text-right">
+                {schoolInfo.principalSignatureUrl && (
+                  <img src={schoolInfo.principalSignatureUrl} alt="Principal signature" className="ml-auto mb-1 h-8 max-w-28 object-contain" />
+                )}
                 <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
-                  R. Saravanan
+                  {schoolInfo.adminName}
                 </span>
                 <strong className="text-slate-900 block text-xs">{schoolInfo.adminName}</strong>
                 <span className="text-[10px] text-slate-500">School Admin, Essur</span>
@@ -832,8 +814,11 @@ export const FeeCardsStudio: React.FC = () => {
               </div>
 
               <div className="text-right">
+                {schoolInfo.principalSignatureUrl && (
+                  <img src={schoolInfo.principalSignatureUrl} alt="Principal signature" className="ml-auto mb-1 h-8 max-w-28 object-contain" />
+                )}
                 <span className="font-serif italic font-bold text-slate-900 block text-xs underline">
-                  R. Saravanan
+                  {schoolInfo.adminName}
                 </span>
                 <strong className="text-slate-900 block text-xs">{schoolInfo.adminName}</strong>
                 <span className="text-[10px] text-slate-500">School Admin, Essur</span>

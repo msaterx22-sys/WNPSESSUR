@@ -106,9 +106,12 @@ export const safeBrowserStorage = {
 
   async saveJson(key: string, value: string): Promise<void> {
     const saved = safeBrowserStorage.setItem(key, value);
-    if (!saved) {
+    if (saved) {
       await indexedDbStorage.setItem(key, value);
+      return;
     }
+
+    await indexedDbStorage.setItem(key, value);
   },
 
   async loadJson(key: string): Promise<string | null> {

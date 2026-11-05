@@ -17,7 +17,7 @@ export interface StaffMember {
   experienceYears: number;
   mobile: string;
   email: string;
-  status: 'Active' | 'On Leave';
+  status: 'Active' | 'On Leave' | 'Relieved';
   basicSalary: number;
   hra: number;
   da: number;
@@ -510,6 +510,7 @@ export const INITIAL_STAFF_ATTENDANCE: StaffAttendanceRecord[] = [
 
 export interface DailyAttendanceDetail {
   id: string;
+  date?: string;
   rollNo: string;
   admissionNo: string;
   studentName: string;
@@ -895,12 +896,15 @@ export interface MonthlyPayrollRecord {
   disbursementDate: string;
 }
 
-export function generateMonthlyPayroll(monthStr: string = '2024-08'): MonthlyPayrollRecord[] {
-  return INITIAL_STAFF_MEMBERS.map((staff, idx) => {
+export function generateMonthlyPayroll(
+  monthStr: string = '2024-08',
+  staffMembers: StaffMember[] = INITIAL_STAFF_MEMBERS,
+): MonthlyPayrollRecord[] {
+  return staffMembers.map((staff, idx) => {
     const grossSalary = staff.basicSalary + staff.hra + staff.da + staff.conveyance + staff.specialAllowance;
     const epfEmployee = staff.epfEligible ? Math.round(staff.basicSalary * 0.12) : 0;
     const esiEmployee = staff.esiEligible && grossSalary <= 21000 ? Math.round(grossSalary * 0.0075) : 0;
-    const professionalTax = grossSalary > 20000 ? 200 : grossSalary > 15000 ? 150 : 100;
+    const professionalTax = grossSalary === 0 ? 0 : grossSalary > 20000 ? 200 : grossSalary > 15000 ? 150 : 100;
     const advanceOrLoanDeduction = idx === 3 ? 1000 : idx === 8 ? 500 : 0; // occasional advance deduction
     const totalDeductions = epfEmployee + esiEmployee + professionalTax + advanceOrLoanDeduction;
     const netPayable = grossSalary - totalDeductions;

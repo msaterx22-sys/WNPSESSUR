@@ -136,6 +136,33 @@ export const SettingsView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const handlePrincipalSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setImportStatus('Please choose a PNG or JPG image for the principal signature.');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setImportStatus('Principal signature image must be smaller than 1 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const signatureUrl = event.target?.result;
+      if (typeof signatureUrl !== 'string') {
+        setImportStatus('Unable to read the principal signature image.');
+        return;
+      }
+      setFormData(prev => ({ ...prev, principalSignatureUrl: signatureUrl }));
+      setImportStatus('Principal signature ready. Save All Configurations to apply it.');
+    };
+    reader.onerror = () => setImportStatus('Unable to read the principal signature image.');
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       
@@ -303,6 +330,40 @@ export const SettingsView: React.FC = () => {
                   Choose Logo
                   <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
                 </label>
+              </div>
+            </div>
+
+            <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-xl border border-[#E2E8E2] bg-[#F2F4F2]/70 p-3">
+              <div className="flex h-16 w-28 items-center justify-center rounded-lg border border-[#E2E8E2] bg-white p-2">
+                {formData.principalSignatureUrl ? (
+                  <img
+                    src={formData.principalSignatureUrl}
+                    alt="Principal signature preview"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-[10px] text-[#6B7280]">No signature uploaded</span>
+                )}
+              </div>
+              <div className="min-w-[180px] flex-1">
+                <label className="block font-bold text-[#2D312E] mb-1">Principal Signature</label>
+                <p className="text-[10px] text-[#6B7280] mb-2">Upload a transparent PNG or JPG up to 1 MB. Used only on student fee, van-fee, and sports PDFs.</p>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#E2E8E2] bg-white px-3 py-1.5 text-[11px] font-bold text-[#4F6D7A] shadow-2xs hover:bg-[#F7F8F6]">
+                    <Upload className="h-3.5 w-3.5" />
+                    Choose Signature
+                    <input type="file" accept="image/png,image/jpeg" onChange={handlePrincipalSignatureUpload} className="hidden" />
+                  </label>
+                  {formData.principalSignatureUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, principalSignatureUrl: undefined }))}
+                      className="rounded-lg border border-[#E2E8E2] bg-white px-3 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50"
+                    >
+                      Remove Signature
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

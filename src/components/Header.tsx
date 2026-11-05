@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
   ];
 
   return (
-    <header className="no-print bg-[#FDFDFB] border-b border-[#E2E8E2] sticky top-0 z-30 shadow-xs">
+    <header className="no-print sticky top-0 z-30 border-b border-[#dfe8e7] bg-white/95 shadow-[0_8px_24px_rgba(45,49,46,0.06)] backdrop-blur-xl">
       {/* Top emergency contact & admin bar */}
       <div className="bg-[#2D312E] text-white text-xs px-4 py-1.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
@@ -151,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
       </div>
 
       {/* Main School Brand Header */}
-      <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6">
+      <div className="mx-auto max-w-7xl px-3 py-3.5 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="relative">
@@ -201,9 +201,9 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
 
         {/* Navigation Tabs for Admin */}
         {userRole === 'admin' && (
-          <div className="mt-3 pt-2 border-t border-[#E2E8E2] space-y-1.5">
+          <div className="mt-3 space-y-2 border-t border-[#E2E8E2] pt-3">
             {/* Primary Operations Row */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B7280] pr-1 select-none hidden lg:inline">
                 Operations:
               </span>
@@ -213,9 +213,9 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-[#4F6D7A] text-white shadow-xs'
+                        ? 'bg-[#4F6D7A] text-white shadow-sm'
                         : 'text-[#2D312E]/80 hover:bg-[#F2F4F2] hover:text-[#2D312E]'
                     }`}
                   >
@@ -227,7 +227,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
             </div>
 
             {/* Reports & Registers Row */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none bg-[#F2F4F2]/70 p-1 rounded-lg border border-[#E2E8E2]/70">
+            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-xl border border-[#E2E8E2]/70 bg-[#F2F4F2]/70 p-1.5 pb-1 scrollbar-none">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#4F6D7A] px-1.5 select-none whitespace-nowrap flex items-center gap-1">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 Reports:

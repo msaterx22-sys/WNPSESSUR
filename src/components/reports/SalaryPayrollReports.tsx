@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useSchool } from '../../context/SchoolContext';
 import { 
-  INITIAL_STAFF_MEMBERS, 
   generateMonthlyPayroll, 
   MonthlyPayrollRecord,
   StaffMember 
 } from '../../data/reportsData';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
-import { generateReportTablePdf } from '../../utils/pdfGenerator';
+import { generateReportTablePdf, generateSalarySlipPdf } from '../../utils/pdfGenerator';
 import { 
   DollarSign, 
   Building2, 
@@ -35,24 +34,21 @@ interface SalaryPayrollReportsProps {
 }
 
 export const SalaryPayrollReports: React.FC<SalaryPayrollReportsProps> = ({ onExportCsv }) => {
-  const { schoolInfo } = useSchool();
+  const {
+    schoolInfo,
+    staffMembers,
+    payrollRecordsByMonth,
+    setPayrollRecordsForMonth,
+  } = useSchool();
   const [subTab, setSubTab] = useState<'payslip' | 'dept-summary' | 'bank-advice' | 'statutory' | 'deductions' | 'annual-tax'>('payslip');
   const [selectedMonth, setSelectedMonth] = useState<string>('2024-08');
   const [viewingPayslip, setViewingPayslip] = useState<MonthlyPayrollRecord | null>(null);
 
-  // Local state for payroll records across months
-  const [payrollRecordsMap, setPayrollRecordsMap] = useState<Record<string, MonthlyPayrollRecord[]>>({
-    '2024-08': generateMonthlyPayroll('2024-08'),
-  });
-
-  const payrollRecords = payrollRecordsMap[selectedMonth] || generateMonthlyPayroll(selectedMonth);
+  const payrollRecords = payrollRecordsByMonth[selectedMonth] ?? generateMonthlyPayroll(selectedMonth, staffMembers);
 
   const setPayrollRecords = (updater: (prev: MonthlyPayrollRecord[]) => MonthlyPayrollRecord[]) => {
-    setPayrollRecordsMap(prevMap => {
-      const current = prevMap[selectedMonth] || generateMonthlyPayroll(selectedMonth);
-      const updated = updater(current);
-      return { ...prevMap, [selectedMonth]: updated };
-    });
+    const updated = updater(payrollRecords);
+    setPayrollRecordsForMonth(selectedMonth, updated);
   };
 
   // Edit / Add Payroll State
@@ -112,17 +108,7 @@ export const SalaryPayrollReports: React.FC<SalaryPayrollReportsProps> = ({ onEx
 
   // Individual Payslip PDF Download
   const handleDownloadSlipPdf = (p: MonthlyPayrollRecord) => {
-    const headers = ['Component Category', 'Earnings Head', 'Amount (INR)', 'Deductions Head', 'Amount (INR)'];
-    const rows = [
-      ['Standard Pay', 'Basic Salary', formatCurrency(p.basicSalary), 'EPF (12%)', formatCurrency(p.epfEmployee)],
-      ['Allowances', 'House Rent Allowance (HRA)', formatCurrency(p.hra), 'ESI (0.75%)', formatCurrency(p.esiEmployee)],
-      ['Allowances', 'Dearness Allowance (DA)', formatCurrency(p.da), 'Professional Tax', formatCurrency(p.professionalTax)],
-      ['Allowances', 'Conveyance Allowance', formatCurrency(p.conveyance), 'Advance / Loan Recovery', formatCurrency(p.advanceOrLoanDeduction)],
-      ['Allowances', 'Special Allowance', formatCurrency(p.specialAllowance), '-', '-'],
-      ['Summary', 'Gross Earnings', formatCurrency(p.grossSalary), 'Total Deductions', formatCurrency(p.totalDeductions)],
-      ['Net Salary Disbursed', '', formatCurrency(p.netPayable), `Mode: ${p.paymentMode}`, `Ref: ${p.transactionReference}`],
-    ];
-    const doc = generateReportTablePdf(`Official Salary Pay Slip - ${p.month}`, `Employee: ${p.staffName} (${p.employeeCode}) | Dept: ${p.department}`, headers, rows, schoolInfo);
+    const doc = generateSalarySlipPdf(p, schoolInfo);
     doc.save(`Payslip_${p.employeeCode}_${p.month}.pdf`);
   };
 
@@ -447,7 +433,7 @@ export const SalaryPayrollReports: React.FC<SalaryPayrollReportsProps> = ({ onEx
         <div className="bg-white p-3.5 rounded-xl border border-[#E2E8E2] shadow-xs">
           <span className="text-[#6B7280] font-medium block">Total Monthly Gross Wages</span>
           <span className="text-base font-extrabold text-[#2D312E] font-mono mt-0.5 block">{formatCurrency(totalGross)}</span>
-          <span className="text-[10px] text-[#6B7280] mt-1 block">12 Staff Members on Roll</span>
+          <span className="text-[10px] text-[#6B7280] mt-1 block">{staffMembers.length} Staff Members on Roll</span>
         </div>
         <div className="bg-white p-3.5 rounded-xl border border-[#E2E8E2] shadow-xs">
           <span className="text-[#6B7280] font-medium block">Total Statutory Deductions</span>
@@ -1028,9 +1014,9 @@ export const SalaryPayrollReports: React.FC<SalaryPayrollReportsProps> = ({ onEx
               {/* School Header */}
               <div className="text-center border-b border-[#E2E8E2] pb-3 space-y-0.5">
                 <h2 className="font-extrabold text-base text-[#4F6D7A] uppercase tracking-wide">
-                  Wisdom Nursery and Primary School
+                  {schoolInfo.name}
                 </h2>
-                <p className="text-[11px] text-[#6B7280]">Essur Village & Post - 603301</p>
+                <p className="text-[11px] text-[#6B7280]">{schoolInfo.address} | Phone: {schoolInfo.phone}</p>
                 <p className="text-[11px] font-bold text-[#2D312E] pt-1">
                   SALARY SLIP FOR THE MONTH OF {viewingPayslip.month.toUpperCase()}
                 </p>

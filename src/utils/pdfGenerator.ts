@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { Student, SchoolInfo, PaymentReceipt } from '../types';
-import { formatNumber, numberToIndianWords } from './formatters';
+import { MonthlyPayrollRecord } from '../data/reportsData';
+import { formatCurrency, formatNumber, numberToIndianWords } from './formatters';
 
 export interface StudentFeeSummary {
   totalFee: number;
@@ -85,6 +86,55 @@ export function generateBulkDemandNoticesPdf(
   return doc;
 }
 
+export type PendingBalancePdfMode = 'all' | 'tuition' | 'van' | 'sports';
+
+export function generatePendingBalancePdf(
+  students: Student[],
+  school: SchoolInfo,
+  getSummary: (s: Student) => StudentFeeSummary,
+  mode: PendingBalancePdfMode = 'all',
+  dueDate: string = 'Within 5 Days'
+): jsPDF {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  students.forEach((student, index) => {
+    if (index > 0) {
+      doc.addPage();
+    }
+
+    const summary = getSummary(student);
+    const paidTuition = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.tuition || 0), 0);
+    const paidVan = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.van || 0), 0);
+    const paidSports = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.sports || 0), 0);
+    const tuitionPending = Math.max(0, (student.tuitionFee || 0) - paidTuition);
+    const vanPending = student.vanFacility ? Math.max(0, (student.vanFee || 0) - paidVan) : 0;
+    const sportsPending = student.sportsFacility ? Math.max(0, (student.sportsFee || 0) - paidSports) : 0;
+    const totalPending = Math.max(0, summary.pendingFee);
+
+    const categoryAmount = mode === 'tuition'
+      ? tuitionPending
+      : mode === 'van'
+        ? vanPending
+        : mode === 'sports'
+          ? sportsPending
+          : totalPending;
+
+    renderPendingCategorySlipPage(doc, student, school, summary, dueDate, mode, {
+      tuitionPending,
+      vanPending,
+      sportsPending,
+      totalPending,
+      categoryAmount,
+    });
+  });
+
+  return doc;
+}
+
 /**
  * Generates Bulk Student ID Cards (4 cards per A4 page)
  */
@@ -98,7 +148,7 @@ export function generateBulkIdCardsPdf(
     format: 'a4',
   });
 
-  const cardsPerPage = 4;
+  const cardsPerPage = 10;
   students.forEach((student, index) => {
     const pageIndex = Math.floor(index / cardsPerPage);
     const cardPositionOnPage = index % cardsPerPage;
@@ -107,15 +157,167 @@ export function generateBulkIdCardsPdf(
       doc.addPage();
     }
 
-    // Positions for 2x2 grid on A4 (210mm x 297mm)
-    // Card size: 88mm x 125mm
     const col = cardPositionOnPage % 2;
     const row = Math.floor(cardPositionOnPage / 2);
-    const startX = 12 + col * 94;
-    const startY = 15 + row * 132;
+    const startX = 12 + col * 94.6;
+    const startY = 10 + row * 56.5;
 
     renderIdCard(doc, student, school, startX, startY);
   });
+
+  return doc;
+}
+
+export type StudentCardPdfType = 'idcard' | 'fee' | 'van' | 'sports';
+
+export function generateStudentCardPdf(
+  type: StudentCardPdfType,
+  student: Student,
+  school: SchoolInfo,
+  summary: StudentFeeSummary,
+): jsPDF {
+  if (type === 'idcard') {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85.6, 54] });
+    renderIdCard(doc, student, school, 0, 0);
+    return doc;
+  }
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = 210;
+  const margin = 14;
+  const right = pageWidth - margin;
+  const paidFor = (key: 'tuition' | 'van' | 'sports') => summary.receipts.reduce(
+    (total, receipt) => total + (receipt.breakdown[key] || 0),
+    0,
+  );
+  const lines: Array<{ label: string; applicable: number; paid: number }> = [];
+  if (type === 'fee') {
+    lines.push({ label: 'Annual Tuition Fee', applicable: student.isRte ? 0 : student.tuitionFee, paid: paidFor('tuition') });
+    if (student.vanFacility) {
+      lines.push({ label: `School Van Fee${student.vanRoute ? ` - ${student.vanRoute}` : ''}`, applicable: student.vanFee, paid: paidFor('van') });
+    }
+    if (student.sportsFacility) {
+      lines.push({ label: 'Sports & Physical Activities Fee', applicable: student.sportsFee, paid: paidFor('sports') });
+    }
+    if (student.otherFee > 0) lines.push({ label: 'Other Fees', applicable: student.otherFee, paid: 0 });
+    if (student.discount > 0) lines.push({ label: 'Concession / Discount', applicable: -student.discount, paid: 0 });
+  } else if (type === 'van') {
+    lines.push({ label: `Annual Van Fee${student.vanRoute ? ` - ${student.vanRoute}` : ''}`, applicable: student.vanFacility ? student.vanFee : 0, paid: paidFor('van') });
+  } else {
+    lines.push({ label: 'Annual Sports Fee', applicable: student.sportsFacility ? student.sportsFee : 0, paid: paidFor('sports') });
+  }
+
+  const title = type === 'fee'
+    ? 'STUDENT FEE RECORD'
+    : type === 'van'
+      ? 'VAN FEE CARD'
+      : 'SPORTS FEE CARD';
+  const accent: [number, number, number] = type === 'van'
+    ? [166, 103, 37]
+    : type === 'sports'
+      ? [93, 65, 130]
+      : [79, 109, 122];
+
+  doc.setDrawColor(...accent);
+  doc.setLineWidth(0.7);
+  doc.roundedRect(margin, 13, right - margin, 36, 2, 2, 'S');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(45, 49, 46);
+  doc.text(school.name, margin + 6, 22, { maxWidth: right - margin - 12 });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`${school.address} | ${school.phone}`, margin + 6, 28);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...accent);
+  doc.text(`${title} - ${school.academicYear}`, margin + 6, 41);
+
+  doc.setFillColor(247, 248, 246);
+  doc.setDrawColor(226, 232, 226);
+  doc.roundedRect(margin, 56, right - margin, 35, 2, 2, 'FD');
+  const studentDetails = [
+    [`Student: ${student.name}`, `Class: ${student.standard} - ${student.section}`],
+    [`Admission No: ${student.admissionNo}`, `Roll No: ${student.rollNo}`],
+    [`Parent / Guardian: ${student.parentName}`, `Contact: ${student.parentPhone}`],
+  ];
+  studentDetails.forEach((row, index) => {
+    const y = 66 + index * 9;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(45, 49, 46);
+    doc.text(row[0], margin + 5, y, { maxWidth: 82 });
+    doc.text(row[1], 111, y, { maxWidth: 75 });
+  });
+
+  const tableY = 102;
+  const col1 = margin + 4;
+  const col2 = 120;
+  const col3 = 151;
+  const col4 = right - 4;
+  doc.setFillColor(...accent);
+  doc.rect(margin, tableY, right - margin, 9, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Fee Component', col1, tableY + 6);
+  doc.text('Applicable', col2, tableY + 6, { align: 'right' });
+  doc.text('Paid', col3, tableY + 6, { align: 'right' });
+  doc.text('Pending', col4, tableY + 6, { align: 'right' });
+
+  let rowY = tableY + 9;
+  lines.forEach((line, index) => {
+    const pending = Math.max(0, line.applicable - line.paid);
+    if (index % 2 === 0) {
+      doc.setFillColor(248, 249, 248);
+      doc.rect(margin, rowY, right - margin, 10, 'F');
+    }
+    doc.setDrawColor(226, 232, 226);
+    doc.line(margin, rowY + 10, right, rowY + 10);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(45, 49, 46);
+    doc.text(line.label, col1, rowY + 6.5, { maxWidth: 78 });
+    doc.text(`INR ${formatNumber(Math.abs(line.applicable))}${line.applicable < 0 ? ' CR' : ''}`, col2, rowY + 6.5, { align: 'right' });
+    doc.text(`INR ${formatNumber(line.paid)}`, col3, rowY + 6.5, { align: 'right' });
+    doc.text(`INR ${formatNumber(pending)}`, col4, rowY + 6.5, { align: 'right' });
+    rowY += 10;
+  });
+
+  const totalLine = type === 'fee'
+    ? { applicable: summary.totalFee, paid: summary.totalPaid, pending: summary.pendingFee }
+    : type === 'van'
+      ? { applicable: student.vanFacility ? student.vanFee : 0, paid: paidFor('van'), pending: Math.max(0, (student.vanFacility ? student.vanFee : 0) - paidFor('van')) }
+      : { applicable: student.sportsFacility ? student.sportsFee : 0, paid: paidFor('sports'), pending: Math.max(0, (student.sportsFacility ? student.sportsFee : 0) - paidFor('sports')) };
+
+  doc.setFillColor(242, 244, 242);
+  doc.rect(margin, rowY, right - margin, 12, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(45, 49, 46);
+  doc.text('TOTAL', col1, rowY + 8);
+  doc.text(`INR ${formatNumber(totalLine.applicable)}`, col2, rowY + 8, { align: 'right' });
+  doc.text(`INR ${formatNumber(totalLine.paid)}`, col3, rowY + 8, { align: 'right' });
+  doc.setTextColor(180, 55, 55);
+  doc.text(`INR ${formatNumber(totalLine.pending)}`, col4, rowY + 8, { align: 'right' });
+
+  const signatureY = 230;
+  if (school.principalSignatureUrl?.startsWith('data:image/')) {
+    const imageFormat = school.principalSignatureUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+    doc.addImage(school.principalSignatureUrl, imageFormat, right - 51, signatureY - 15, 36, 12);
+  }
+  doc.setDrawColor(150, 150, 150);
+  doc.line(right - 58, signatureY, right - 8, signatureY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(45, 49, 46);
+  doc.text(school.adminName, right - 33, signatureY + 5, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text('Principal / Correspondent', right - 33, signatureY + 10, { align: 'center' });
+  doc.setFontSize(7);
+  doc.text('This is a computer-generated school record.', pageWidth / 2, 282, { align: 'center' });
 
   return doc;
 }
@@ -637,6 +839,185 @@ function renderDemandNoticePage(
   doc.text('Headmaster / Office Administrator', 164.5, y + 14, { align: 'center' });
 }
 
+function renderPendingCategorySlipPage(
+  doc: jsPDF,
+  student: Student,
+  school: SchoolInfo,
+  summary: StudentFeeSummary,
+  dueDate: string,
+  mode: PendingBalancePdfMode,
+  values: {
+    tuitionPending: number;
+    vanPending: number;
+    sportsPending: number;
+    totalPending: number;
+    categoryAmount: number;
+  }
+) {
+  const categoryTitle = mode === 'tuition'
+    ? 'TUITION FEES ONLY - PENDING BALANCE'
+    : mode === 'van'
+      ? 'VAN FEES ONLY - PENDING BALANCE'
+      : mode === 'sports'
+        ? 'SPORTS FEES ONLY - PENDING BALANCE'
+        : 'TOTAL PENDING BALANCE';
+
+  const tuitionPaid = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.tuition || 0), 0);
+  const vanPaid = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.van || 0), 0);
+  const sportsPaid = summary.receipts.reduce((sum, receipt) => sum + (receipt.breakdown.sports || 0), 0);
+
+  const titleMap = {
+    tuition: { total: student.tuitionFee || 0, paid: tuitionPaid, pending: values.tuitionPending, label: 'Tuition Fee' },
+    van: { total: student.vanFacility ? (student.vanFee || 0) : 0, paid: vanPaid, pending: values.vanPending, label: 'Van Transport' },
+    sports: { total: student.sportsFacility ? (student.sportsFee || 0) : 0, paid: sportsPaid, pending: values.sportsPending, label: 'Sports Fee' },
+    all: { total: summary.totalFee, paid: summary.totalPaid, pending: values.totalPending, label: 'Total Due' },
+  } as const;
+
+  const active = titleMap[mode];
+
+  doc.setDrawColor(79, 109, 122);
+  doc.setLineWidth(0.8);
+  doc.rect(8, 8, 194, 281);
+  doc.setDrawColor(226, 232, 226);
+  doc.setLineWidth(0.3);
+  doc.rect(9.5, 9.5, 191, 278);
+
+  doc.setFillColor(45, 49, 46);
+  doc.rect(10, 10, 190, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text(school.name.toUpperCase(), 105, 18, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(214, 138, 110);
+  doc.text(`${school.address} | Phone: ${school.phone}`, 105, 25, { align: 'center' });
+
+  doc.setFillColor(242, 244, 242);
+  doc.rect(10, 35, 190, 12, 'F');
+  doc.setTextColor(79, 109, 122);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(categoryTitle, 14, 42.5);
+
+  const issueDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(80, 80, 80);
+  doc.text(`Statement Date: ${issueDate}`, 196, 42.5, { align: 'right' });
+
+  doc.setFillColor(253, 253, 251);
+  doc.roundedRect(12, 52, 186, 30, 2, 2, 'FD');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Student Name:', 16, 59);
+  doc.text('Class / Section:', 16, 66);
+  doc.text('Admission No:', 16, 73);
+  doc.text('Parent / Guardian:', 108, 59);
+  doc.text('Mobile:', 108, 66);
+  doc.text('Due Date:', 108, 73);
+
+  doc.setTextColor(45, 49, 46);
+  doc.setFont('helvetica', 'bold');
+  doc.text(student.name.toUpperCase(), 52, 59);
+  doc.text(`${student.standard} - ${student.section}`, 52, 66);
+  doc.text(student.admissionNo, 52, 73);
+  doc.text(student.parentName, 136, 59);
+  doc.text(student.parentPhone, 136, 66);
+  doc.text(dueDate, 136, 73);
+
+  const boxY = 86;
+  doc.setFillColor(255, 245, 245);
+  doc.roundedRect(12, boxY, 186, 24, 2, 2, 'FD');
+  doc.setDrawColor(214, 60, 60);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(12, boxY, 186, 24, 2, 2, 'S');
+  doc.setTextColor(180, 40, 40);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text(`${active.label.toUpperCase()} TOTAL`, 18, boxY + 8);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(`Rs. ${formatNumber(active.pending)}`, 170, boxY + 15, { align: 'right' });
+
+  const summaryY = 118;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(45, 49, 46);
+  doc.text('PENDING BALANCE BREAKDOWN', 14, summaryY);
+
+  doc.setFillColor(79, 109, 122);
+  doc.rect(12, summaryY + 4, 186, 7, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(7.5);
+  doc.text('Description', 16, summaryY + 9.2);
+  doc.text('Amount (INR)', 194, summaryY + 9.2, { align: 'right' });
+
+  let rowY = summaryY + 11;
+  const rows = [
+    { label: `${active.label} Total`, amount: active.total },
+    { label: `${active.label} Paid Till Date`, amount: active.paid },
+    { label: 'Outstanding Pending Balance', amount: active.pending },
+  ];
+
+  rows.forEach((row, idx) => {
+    doc.setFillColor(idx % 2 === 0 ? 253 : 246, idx % 2 === 0 ? 253 : 248, idx % 2 === 0 ? 251 : 246);
+    doc.rect(12, rowY, 186, 7, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(45, 49, 46);
+    doc.text(row.label, 16, rowY + 4.8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(row.amount >= 0 ? 45 : 40, row.amount >= 0 ? 49 : 120, row.amount >= 0 ? 46 : 70);
+    doc.text(`Rs. ${formatNumber(row.amount)}`, 194, rowY + 4.8, { align: 'right' });
+    rowY += 7;
+  });
+
+  rowY += 5;
+  doc.setFillColor(242, 244, 242);
+  doc.roundedRect(12, rowY, 186, 26, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(79, 109, 122);
+  doc.text('OFFICIAL PAYMENT INSTRUCTIONS', 16, rowY + 5.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(60, 60, 60);
+  doc.text(`1. Please clear the pending ${active.label.toLowerCase()} balance of Rs. ${formatNumber(active.pending)} on or before ${dueDate}.`, 16, rowY + 11);
+  doc.text(`2. UPI / GPay ID: ${school.upiId}`, 16, rowY + 16);
+  doc.text(`3. Mobile: ${school.gpayPhone} | Office Admin: ${school.adminName} (${school.phone})`, 16, rowY + 21);
+
+  const footerY = 205;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text('This fee statement is issued only for the selected pending category and should be settled at the earliest to avoid service disruption.', 14, footerY, { maxWidth: 182 });
+
+  doc.setDrawColor(180, 190, 180);
+  doc.line(14, 250, 70, 250);
+  doc.line(140, 250, 196, 250);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Parent / Guardian Signature', 42, 255, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(45, 49, 46);
+  doc.text(school.adminName, 168, 249, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text('Office Admin / Correspondent', 168, 255, { align: 'center' });
+
+  doc.setFontSize(6.5);
+  doc.setTextColor(140, 140, 140);
+  doc.text(
+    `This is an authentic computer generated pending balance statement from Wisdom Nursery and Primary School. Document ID: WNS-PB-${student.admissionNo}`,
+    105,
+    272,
+    { align: 'center' }
+  );
+}
+
 function renderIdCard(
   doc: jsPDF,
   student: Student,
@@ -644,117 +1025,88 @@ function renderIdCard(
   startX: number,
   startY: number
 ) {
-  // Card dimensions: 88mm wide x 125mm high (Standard portrait student badge)
-  const w = 88;
-  const h = 125;
-
-  // Outer Border
+  const width = 85.6;
+  const height = 54;
   doc.setDrawColor(79, 109, 122);
-  doc.setLineWidth(0.6);
-  doc.roundedRect(startX, startY, w, h, 3, 3, 'S');
+  doc.setLineWidth(0.5);
+  doc.roundedRect(startX + 0.8, startY + 0.8, width - 1.6, height - 1.6, 2, 2, 'S');
 
-  // Header Banner
-  doc.setFillColor(45, 49, 46);
-  doc.roundedRect(startX, startY, w, 22, 3, 3, 'F');
-  // Flat bottom for header
-  doc.rect(startX, startY + 16, w, 6, 'F');
-
-  doc.setTextColor(255, 255, 255);
+  doc.setFillColor(79, 109, 122);
+  doc.roundedRect(startX + 1, startY + 1, width - 2, 12, 1.5, 1.5, 'F');
+  doc.rect(startX + 1, startY + 9, width - 2, 4, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text(school.name.toUpperCase(), startX + w / 2, startY + 7, { align: 'center' });
-
-  doc.setFontSize(6.5);
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text(school.name.toUpperCase(), startX + 43, startY + 5.5, { align: 'center', maxWidth: 68 });
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(214, 138, 110);
-  doc.text(`${school.location.toUpperCase()} - ${school.pincode} | ACADEMIC ID CARD`, startX + w / 2, startY + 13, { align: 'center' });
-  doc.setTextColor(200, 200, 200);
-  doc.text(`Academic Year ${school.academicYear}`, startX + w / 2, startY + 18, { align: 'center' });
+  doc.setFontSize(5.2);
+  doc.text(`${school.address} | ${school.phone}`, startX + 43, startY + 9, { align: 'center', maxWidth: 68 });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5);
+  doc.setTextColor(255, 238, 230);
+  doc.text(`STUDENT ID CARD  |  ${school.academicYear}`, startX + 43, startY + 11.5, { align: 'center' });
 
-  // Photo Frame
-  const photoY = startY + 25;
-  const photoSize = 25;
-  const photoX = startX + (w - photoSize) / 2;
-
-  doc.setFillColor(235, 240, 235);
-  doc.setDrawColor(79, 109, 122);
-  doc.setLineWidth(0.4);
-  doc.rect(photoX, photoY, photoSize, photoSize, 'FD');
-
-  if (student.photoUrl && student.photoUrl.startsWith('data:image')) {
-    try {
-      doc.addImage(student.photoUrl, 'JPEG', photoX, photoY, photoSize, photoSize);
-    } catch {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(120, 120, 120);
-      doc.text('PHOTO', startX + w / 2, photoY + 14, { align: 'center' });
-    }
+  const photoX = startX + 3.5;
+  const photoY = startY + 16;
+  const photoWidth = 15;
+  const photoHeight = 19;
+  doc.setFillColor(242, 244, 242);
+  doc.setDrawColor(137, 168, 148);
+  doc.roundedRect(photoX, photoY, photoWidth, photoHeight, 1, 1, 'FD');
+  const imageFormat = student.photoUrl?.startsWith('data:image/png')
+    ? 'PNG'
+    : student.photoUrl?.startsWith('data:image/jpeg')
+      ? 'JPEG'
+      : undefined;
+  if (student.photoUrl && imageFormat) {
+    doc.addImage(student.photoUrl, imageFormat, photoX, photoY, photoWidth, photoHeight);
   } else {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(120, 120, 120);
-    doc.text('STUDENT PHOTO', startX + w / 2, photoY + 14, { align: 'center' });
+    doc.setFontSize(5);
+    doc.setTextColor(100, 100, 100);
+    doc.text(student.photoUrl ? 'USE JPG / PNG' : 'PHOTO', photoX + photoWidth / 2, photoY + 10, { align: 'center' });
   }
 
-  // Student Name
-  let detailsY = photoY + photoSize + 6;
+  const detailsX = startX + 21;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(8.2);
   doc.setTextColor(45, 49, 46);
-  doc.text(student.name.toUpperCase(), startX + w / 2, detailsY, { align: 'center' });
-
-  // Standard Pill
-  detailsY += 5.5;
-  doc.setFillColor(79, 109, 122);
-  doc.roundedRect(startX + 18, detailsY - 3.5, w - 36, 5, 1, 1, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7);
-  doc.text(`CLASS: ${student.standard} - SEC: ${student.section} | ROLL: ${student.rollNo}`, startX + w / 2, detailsY, { align: 'center' });
-
-  // Details Grid
-  detailsY += 7;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(100, 100, 100);
-
-  const leftX = startX + 6;
-  const valueX = startX + 32;
+  doc.text(student.name.toUpperCase(), detailsX, startY + 18, { maxWidth: 60 });
+  doc.setFontSize(6.1);
+  doc.setTextColor(79, 109, 122);
+  doc.text(`${student.standard} - ${student.section}  |  Roll: ${student.rollNo}`, detailsX, startY + 22.5);
 
   const fields = [
-    { label: 'Admission No:', val: student.admissionNo },
-    { label: 'Parent Name:', val: student.parentName },
-    { label: 'Emergency Contact:', val: student.parentPhone },
-    { label: 'Blood Group:', val: student.bloodGroup || 'O+ve' },
-    { label: 'Van Transport:', val: student.vanFacility ? `Yes (${student.vanRoute || 'Essur Route'})` : 'No' },
-    { label: 'Residential Area:', val: (student.address || 'Essur').substring(0, 24) },
+    `Admission: ${student.admissionNo}`,
+    `Parent: ${student.parentName}`,
+    `Contact: ${student.parentPhone}`,
+    `Blood Group: ${student.bloodGroup || 'N/A'}`,
   ];
-
-  fields.forEach(f => {
-    doc.setTextColor(100, 100, 100);
-    doc.setFont('helvetica', 'normal');
-    doc.text(f.label, leftX, detailsY);
-    doc.setTextColor(45, 49, 46);
-    doc.setFont('helvetica', 'bold');
-    doc.text(f.val, valueX, detailsY);
-    detailsY += 4.2;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.8);
+  doc.setTextColor(45, 49, 46);
+  fields.forEach((field, index) => {
+    doc.text(field, detailsX, startY + 27 + index * 4.2, { maxWidth: 60 });
   });
 
-  // Bottom Signature & Seal
-  const footerY = startY + h - 12;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(startX + 4, footerY, startX + w - 4, footerY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.5);
-  doc.setTextColor(100, 100, 100);
-  doc.text('Parent Signature', startX + 16, footerY + 8, { align: 'center' });
-
+  doc.setDrawColor(226, 232, 226);
+  doc.line(startX + 3, startY + 38, startX + width - 3, startY + 38);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(45, 49, 46);
-  doc.text(school.adminName, startX + w - 18, footerY + 6, { align: 'center' });
+  doc.setFontSize(5.3);
+  doc.setTextColor(79, 109, 122);
+  doc.text(`WISDOM-${student.admissionNo}`, startX + 4, startY + 43);
   doc.setFont('helvetica', 'normal');
-  doc.text('Headmaster Seal', startX + w - 18, footerY + 9, { align: 'center' });
+  doc.setFontSize(4.8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Valid: ${school.academicYear}${student.vanFacility ? `  |  Van: ${student.vanRoute || 'Yes'}` : ''}`, startX + 4, startY + 47);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(45, 49, 46);
+  doc.text(school.adminName, startX + width - 4, startY + 43, { align: 'right', maxWidth: 35 });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(4.6);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Principal / Correspondent', startX + width - 4, startY + 47, { align: 'right' });
 }
 
 // --------------------------------------------------------------------------
@@ -1364,3 +1716,155 @@ export function generateReportTablePdf(
   return doc;
 }
 
+export function generateSalarySlipPdf(
+  payroll: MonthlyPayrollRecord,
+  school: SchoolInfo,
+): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const salaryAmount = (amount: number) => `INR ${formatNumber(amount)}`;
+  const pageWidth = 210;
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+  const gap = 5;
+  const columnWidth = (contentWidth - gap) / 2;
+  const generatedOn = new Date().toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  doc.setDrawColor(79, 109, 122);
+  doc.setFillColor(242, 244, 242);
+  doc.roundedRect(margin, 12, contentWidth, 31, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(45, 49, 46);
+  doc.text(school.name || 'Wisdom Nursery and Primary School', margin + 5, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`${school.address || 'Essur Village & Post - 603301'} | Phone: ${school.phone}`, margin + 5, 25);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(79, 109, 122);
+  doc.text(`OFFICIAL SALARY PAY SLIP - ${payroll.month}`, margin + 5, 34);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${generatedOn}`, margin + contentWidth - 5, 34, { align: 'right' });
+
+  const detailsY = 48;
+  doc.setDrawColor(226, 232, 226);
+  doc.setFillColor(247, 248, 246);
+  doc.roundedRect(margin, detailsY, contentWidth, 34, 2, 2, 'FD');
+  const details = [
+    [`Employee Name: ${payroll.staffName}`, `Employee Code: ${payroll.employeeCode}`],
+    [`Designation: ${payroll.designation}`, `Department: ${payroll.department}`],
+    [`Bank Account: ${payroll.bankName} - ${payroll.accountNo}`, `IFSC: ${payroll.ifscCode}`],
+    [`UAN: ${payroll.uanNumber}`, `PAN: ${payroll.panNumber}`],
+  ];
+  doc.setFontSize(8);
+  details.forEach((row, index) => {
+    const y = detailsY + 8 + index * 6.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text(row[0], margin + 4, y, { maxWidth: columnWidth - 5 });
+    doc.text(row[1], margin + columnWidth + gap + 4, y, { maxWidth: columnWidth - 5 });
+  });
+
+  const tableY = 91;
+  const tableHeight = 8;
+  const rowHeight = 8;
+  const earnings = [
+    ['Basic Pay', payroll.basicSalary],
+    ['HRA', payroll.hra],
+    ['DA', payroll.da],
+    ['Conveyance', payroll.conveyance],
+    ['Special Allowance', payroll.specialAllowance],
+  ] as const;
+  const deductions = [
+    ['EPF Employee (12%)', payroll.epfEmployee],
+    ['ESI Employee (0.75%)', payroll.esiEmployee],
+    ['Professional Tax', payroll.professionalTax],
+    ['Salary Advance', payroll.advanceOrLoanDeduction],
+  ] as const;
+
+  const drawPayColumn = (
+    x: number,
+    title: string,
+    items: ReadonlyArray<readonly [string, number]>,
+    totalLabel: string,
+    total: number,
+    color: [number, number, number],
+  ) => {
+    doc.setFillColor(...color);
+    doc.rect(x, tableY, columnWidth, tableHeight, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, x + 3, tableY + 5.4);
+
+    items.forEach(([label, amount], index) => {
+      const y = tableY + tableHeight + index * rowHeight;
+      if (index % 2 === 1) {
+        doc.setFillColor(248, 249, 248);
+        doc.rect(x, y, columnWidth, rowHeight, 'F');
+      }
+      doc.setDrawColor(226, 232, 226);
+      doc.line(x, y + rowHeight, x + columnWidth, y + rowHeight);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(70, 75, 72);
+      doc.text(label, x + 3, y + 5.3, { maxWidth: columnWidth - 32 });
+      doc.text(salaryAmount(amount), x + columnWidth - 3, y + 5.3, { align: 'right' });
+    });
+
+    const totalY = tableY + tableHeight + items.length * rowHeight;
+    doc.setFillColor(242, 244, 242);
+    doc.rect(x, totalY, columnWidth, rowHeight, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...color);
+    doc.text(totalLabel, x + 3, totalY + 5.3);
+    doc.text(salaryAmount(total), x + columnWidth - 3, totalY + 5.3, { align: 'right' });
+  };
+
+  drawPayColumn(margin, 'Earnings', earnings, 'Gross Earnings', payroll.grossSalary, [79, 109, 122]);
+  drawPayColumn(margin + columnWidth + gap, 'Deductions', deductions, 'Total Deductions', payroll.totalDeductions, [214, 138, 110]);
+
+  const netY = 157;
+  doc.setDrawColor(137, 168, 148);
+  doc.setFillColor(232, 240, 235);
+  doc.roundedRect(margin, netY, contentWidth, 21, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(45, 49, 46);
+  doc.text('Net Salary Payable', margin + 5, netY + 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Payment: ${payroll.paymentMode} | Reference: ${payroll.transactionReference}`, margin + 5, netY + 15);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(45, 49, 46);
+  doc.text(salaryAmount(payroll.netPayable), margin + contentWidth - 5, netY + 13, { align: 'right' });
+
+  const signatureY = 238;
+  doc.setDrawColor(170, 175, 171);
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(margin + 8, signatureY, margin + 68, signatureY);
+  doc.line(margin + contentWidth - 68, signatureY, margin + contentWidth - 8, signatureY);
+  doc.setLineDashPattern([], 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Staff Signature', margin + 38, signatureY + 5, { align: 'center' });
+  doc.text('Headmaster / Correspondent', margin + contentWidth - 38, signatureY + 5, { align: 'center' });
+
+  doc.setFontSize(7);
+  doc.setTextColor(130, 130, 130);
+  doc.text(`${school.name} | ${school.address}`, pageWidth / 2, 282, { align: 'center' });
+  doc.text('This is a computer-generated salary slip.', pageWidth / 2, 287, { align: 'center' });
+
+  return doc;
+}

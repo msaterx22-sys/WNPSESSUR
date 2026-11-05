@@ -21,16 +21,38 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    background: #f3f6f7;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    background-color: #F7F8F6;
+    min-width: 320px;
+    background:
+      radial-gradient(ellipse at 12% 0%, rgb(137 168 148 / 10%), transparent 34rem),
+      #f3f6f7;
     color: #2D312E;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 3px solid rgb(79 109 122 / 45%);
+    outline-offset: 2px;
   }
 
   .dashboard-stat-card {
     position: relative;
     overflow: hidden;
-    transition: transform 160ms ease, box-shadow 160ms ease;
+    border-radius: 1rem;
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
   }
 
   .dashboard-stat-card::before {
@@ -42,14 +64,34 @@
   }
 
   .dashboard-stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgb(45 49 46 / 8%);
+    transform: translateY(-3px);
+    box-shadow: 0 16px 34px rgb(45 49 46 / 9%);
   }
 
   .dashboard-stat-card--blue { --stat-accent: var(--color-dashboard-blue); }
   .dashboard-stat-card--gold { --stat-accent: var(--color-dashboard-gold); }
   .dashboard-stat-card--green { --stat-accent: var(--color-dashboard-green); }
   .dashboard-stat-card--coral { --stat-accent: var(--color-dashboard-coral); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+.printable-document--idcard {
+  box-sizing: border-box;
+  width: 85.6mm;
+  height: 54mm;
 }
 
 /* Print styling for official receipts and school fee cards */
@@ -74,6 +116,22 @@
     background: white !important;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  body.printing-idcard .printable-document:not(.printable-document--idcard) {
+    display: none !important;
+  }
+
+  body.printing-idcard .printable-document--idcard {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 85.6mm !important;
+    height: 54mm !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    border: 0.3mm solid #4F6D7A !important;
+    border-radius: 2mm !important;
   }
 
   .print-page-break {

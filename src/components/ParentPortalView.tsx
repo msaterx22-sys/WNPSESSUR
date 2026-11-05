@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSchool } from '../context/SchoolContext';
 import { Student, PaymentReceipt } from '../types';
-import { formatCurrency, generateUpiUrl } from '../utils/formatters';
+import { cleanPhoneNumber, formatCurrency, generateUpiUrl } from '../utils/formatters';
 import { UpiQrCode } from './UpiQrCode';
 import { 
   Search, 
@@ -17,7 +17,10 @@ import {
   CreditCard,
   Building2,
   Lock,
-  ArrowRight
+  ArrowRight,
+  CalendarDays,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 
 interface ParentPortalViewProps {
@@ -36,6 +39,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
     getStudentTotalPaid, 
     getStudentPending, 
     getStudentReceipts,
+    dailyAttendance,
     activeStudentPortal,
     setActiveStudentPortal
   } = useSchool();
@@ -50,11 +54,14 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
     const query = searchKey.trim().toLowerCase();
     if (!query) return;
 
-    const matched = students.find(s => 
-      s.admissionNo.toLowerCase() === query || 
-      s.parentPhone.replace(/\D/g, '').includes(query.replace(/\D/g, '')) ||
-      s.name.toLowerCase().includes(query)
-    );
+    const digits = query.replace(/\D/g, '');
+    const matched = students.find(student => (
+      student.admissionNo.trim().toLowerCase() === query
+      || (digits.length >= 10 && (
+        cleanPhoneNumber(student.parentPhone) === cleanPhoneNumber(query)
+        || cleanPhoneNumber(student.whatsappNumber) === cleanPhoneNumber(query)
+      ))
+    ));
 
     if (matched) {
       setActiveStudentPortal(matched);
@@ -85,7 +92,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
               <label className="block text-xs font-bold text-[#2D312E] uppercase mb-1">
-                Enter Admission No or Registered Mobile Number
+                Enter Admission No or full Registered Mobile Number
               </label>
               <div className="relative">
                 <input
@@ -98,7 +105,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
                 />
               </div>
               <p className="text-[11px] text-[#6B7280] mt-1">
-                Tip: Try demo admissions like <strong>WIS-2024-001</strong>, <strong>WIS-2024-005</strong> or mobile <strong>9840123456</strong>
+                Demo access only. Enter a full admission number or registered mobile number.
               </p>
             </div>
 
@@ -117,6 +124,10 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] leading-relaxed text-amber-900">
+            This GitHub Pages demo stores its records in this browser. It does not verify parent identity or sync data between devices.
+          </div>
 
           {/* Quick Select demo pill list */}
           <div className="pt-4 border-t border-[#E2E8E2]/70 text-xs">
@@ -144,6 +155,13 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
   const receipts = getStudentReceipts(currentStudent.id);
 
   const upiPayUrl = generateUpiUrl(schoolInfo, pending, currentStudent.name);
+  const attendanceRecords = dailyAttendance
+    .filter(record => record.admissionNo === currentStudent.admissionNo && record.date)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const paymentConfirmationMessage = encodeURIComponent(
+    `Hello ${schoolInfo.adminName}, I have made a UPI fee payment for ${currentStudent.name} (${currentStudent.admissionNo}) of ${formatCurrency(pending)}. Please verify the transaction and issue the official receipt.`
+  );
+  const officeWhatsApp = cleanPhoneNumber(schoolInfo.phone);
 
   return (
     <div className="space-y-6">
@@ -188,6 +206,13 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
             Switch Student
           </button>
         </div>
+      </div>
+
+      <div role="note" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-relaxed text-amber-900">
+        <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Demo portal only: student details are not protected by verified parent accounts and changes do not sync to other devices. Do not enter sensitive information.
+        </span>
       </div>
 
       {/* Fee Status Summary Cards */}
@@ -256,14 +281,70 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
               </span>
               <a
                 href={upiPayUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="mt-2 w-full py-1.5 px-3 bg-[#89A894] hover:bg-[#789683] text-white font-bold rounded text-xs text-center transition-colors block"
               >
                 Pay in UPI App
               </a>
+              <a
+                href={`https://wa.me/${officeWhatsApp}?text=${paymentConfirmationMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 w-full py-1.5 px-3 bg-[#4F6D7A] hover:bg-[#415A65] text-white font-bold rounded text-xs text-center transition-colors block"
+              >
+                I paid — message office
+              </a>
             </div>
           </div>
+          <p className="mt-4 text-[11px] leading-relaxed text-[#E2E8E2]">
+            UPI payments are not verified automatically. The balance changes only after the school records and verifies your payment.
+          </p>
         </div>
       )}
+
+      <section className="rounded-2xl border border-[#E2E8E2] bg-white p-5 shadow-xs">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#2D312E]">
+              <CalendarDays className="h-4 w-4 text-[#4F6D7A]" />
+              Attendance updates
+            </h3>
+            <p className="mt-1 text-xs text-[#6B7280]">Daily attendance recorded by the school office on this browser</p>
+          </div>
+          <span className="rounded-full bg-[#F2F4F2] px-2.5 py-1 text-[11px] font-semibold text-[#4F6D7A]">
+            {attendanceRecords.length} {attendanceRecords.length === 1 ? 'record' : 'records'}
+          </span>
+        </div>
+        {attendanceRecords.length > 0 ? (
+          <div className="divide-y divide-[#E2E8E2]">
+            {attendanceRecords.slice(0, 7).map(record => (
+              <div key={record.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                <div>
+                  <p className="text-xs font-semibold text-[#2D312E]">
+                    {record.date} <span className="font-normal text-[#6B7280]">· {record.standard} - {record.section}</span>
+                  </p>
+                  {record.reason && <p className="mt-0.5 text-[11px] text-[#6B7280]">{record.reason}</p>}
+                </div>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                  record.status === 'Present'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : record.status === 'Absent'
+                      ? 'bg-rose-50 text-rose-700'
+                      : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {record.status === 'Present' ? <CheckCircle className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                  {record.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl bg-[#F7F8F6] px-4 py-6 text-center text-xs text-[#6B7280]">
+            No saved attendance updates for this student yet. Attendance data is available only in the browser where the office records it.
+          </div>
+        )}
+      </section>
 
       {/* Payment History & Fee Slips Table */}
       <div className="bg-white rounded-xl border border-[#E2E8E2] p-5 shadow-xs space-y-4">

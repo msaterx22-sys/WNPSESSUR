@@ -17,9 +17,12 @@ import {
   MessageSquare, 
   Printer, 
   CreditCard,
-  UserPlus
+  UserPlus,
+  CalendarDays,
+  ArrowUpRight,
+  ReceiptText
 } from 'lucide-react';
-import { Student, PaymentReceipt, StandardClass } from '../types';
+import { Student, PaymentReceipt } from '../types';
 
 interface DashboardViewProps {
   onCollectPayment: (student: Student) => void;
@@ -48,6 +51,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } = useSchool();
 
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const filteredTrendReceipts = receipts.filter(receipt => (
+    selectedClassFilter === 'all' || receipt.standard === selectedClassFilter
+  ));
+  const recordedMonths = [...new Set<string>(filteredTrendReceipts.map(receipt => receipt.date.slice(0, 7)))].sort();
+  const fallbackMonths = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (5 - index));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const trendMonths = (recordedMonths.length > 0 ? recordedMonths : fallbackMonths).slice(-6);
+  const collectionTrend = trendMonths.map((monthKey, index) => {
+    const [year, month] = monthKey.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    const amount = filteredTrendReceipts
+      .filter(receipt => receipt.date.startsWith(monthKey))
+      .reduce((sum, receipt) => sum + receipt.amountPaid, 0);
+
+    return {
+      label: date.toLocaleString('en-IN', { month: 'short', year: '2-digit' }),
+      amount,
+      isLatestMonth: index === trendMonths.length - 1,
+    };
+  });
+  const highestMonthlyCollection = Math.max(...collectionTrend.map(month => month.amount), 1);
 
   // Pending students list sorted by highest pending amount
   const pendingStudents = students
@@ -73,7 +101,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6">
       
       {/* Top Welcome Banner with Office Admin badge */}
-      <div className="bg-[#2D312E] text-white rounded-2xl p-5 shadow-sm border border-[#3A3F3B] flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="relative isolate flex flex-col justify-between gap-4 overflow-hidden rounded-3xl border border-[#3A3F3B] bg-gradient-to-br from-[#263237] via-[#2D3C40] to-[#4F6D7A] p-5 text-white shadow-[0_20px_50px_rgba(45,49,46,0.18)] sm:p-7 md:flex-row md:items-center">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 -z-10 h-64 w-64 rounded-full border border-white/10 bg-white/5" />
         <div className="flex items-center gap-4">
           <img 
             src={schoolInfo.logoUrl || '/school_logo.jpg'}
@@ -169,6 +198,83 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(260px,1fr)]">
+        <div className="rounded-2xl border border-[#E2E8E2] bg-white p-5 shadow-xs">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-bold text-[#2D312E]">
+                <TrendingUp className="h-4 w-4 text-[#4F6D7A]" />
+                Fee collection trend
+              </h3>
+              <p className="mt-1 text-xs text-[#6B7280]">Last six months with recorded payments</p>
+            </div>
+            <select
+              value={selectedClassFilter}
+              onChange={event => setSelectedClassFilter(event.target.value)}
+              aria-label="Filter collection trend by class"
+              className="rounded-lg border border-[#E2E8E2] bg-[#F7F8F6] px-3 py-2 text-xs font-semibold text-[#2D312E] outline-none focus:ring-2 focus:ring-[#4F6D7A]/30"
+            >
+              <option value="all">All classes</option>
+              {classList.map(standard => <option key={standard} value={standard}>{standard}</option>)}
+            </select>
+          </div>
+          <div className="grid h-40 grid-cols-6 items-end gap-3" role="img" aria-label="Monthly fee collection bar chart">
+            {collectionTrend.map(month => (
+              <div key={month.label} className="flex h-full flex-col items-center justify-end gap-2">
+                <span className="text-center text-[10px] font-semibold text-[#6B7280]">
+                  {month.amount > 0 ? formatCurrency(month.amount) : '—'}
+                </span>
+                <div className="flex h-24 w-full items-end rounded-t-lg bg-[#F2F4F2]">
+                  <div
+                    className={`w-full rounded-t-lg transition-all ${month.isLatestMonth ? 'bg-[#D68A6E]' : 'bg-[#4F6D7A]'}`}
+                    style={{ height: `${Math.max(4, (month.amount / highestMonthlyCollection) * 100)}%` }}
+                    title={`${month.label}: ${formatCurrency(month.amount)}`}
+                  />
+                </div>
+                <span className={`text-[11px] font-bold ${month.isLatestMonth ? 'text-[#D68A6E]' : 'text-[#6B7280]'}`}>
+                  {month.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#E2E8E2] bg-white p-5 shadow-xs">
+          <h3 className="text-sm font-bold text-[#2D312E]">Office quick actions</h3>
+          <p className="mt-1 text-xs text-[#6B7280]">Open the tools used most during the school day</p>
+          <div className="mt-4 grid gap-2">
+            <button
+              onClick={onAddNewStudent}
+              className="flex items-center justify-between rounded-xl border border-[#E2E8E2] bg-[#F7F8F6] px-3 py-3 text-left text-xs font-semibold text-[#2D312E] transition hover:border-[#89A894] hover:bg-[#89A894]/10"
+            >
+              <span className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-[#4F6D7A]" /> Register a student</span>
+              <ArrowUpRight className="h-4 w-4 text-[#6B7280]" />
+            </button>
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className="flex items-center justify-between rounded-xl border border-[#E2E8E2] bg-[#F7F8F6] px-3 py-3 text-left text-xs font-semibold text-[#2D312E] transition hover:border-[#89A894] hover:bg-[#89A894]/10"
+            >
+              <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#4F6D7A]" /> Mark attendance</span>
+              <ArrowUpRight className="h-4 w-4 text-[#6B7280]" />
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className="flex items-center justify-between rounded-xl border border-[#E2E8E2] bg-[#F7F8F6] px-3 py-3 text-left text-xs font-semibold text-[#2D312E] transition hover:border-[#89A894] hover:bg-[#89A894]/10"
+            >
+              <span className="flex items-center gap-2"><ReceiptText className="h-4 w-4 text-[#4F6D7A]" /> Record / view fee receipts</span>
+              <ArrowUpRight className="h-4 w-4 text-[#6B7280]" />
+            </button>
+            <button
+              onClick={() => setActiveTab('whatsapp')}
+              className="flex items-center justify-between rounded-xl border border-[#E2E8E2] bg-[#F7F8F6] px-3 py-3 text-left text-xs font-semibold text-[#2D312E] transition hover:border-[#89A894] hover:bg-[#89A894]/10"
+            >
+              <span className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#4F6D7A]" /> Send parent fee reminders</span>
+              <ArrowUpRight className="h-4 w-4 text-[#6B7280]" />
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* Auxiliary Fee Breakdown Badges */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

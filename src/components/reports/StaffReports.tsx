@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useSchool } from '../../context/SchoolContext';
 import { 
-  INITIAL_STAFF_MEMBERS, 
   generateMonthlyPayroll, 
   StaffMember, 
   MonthlyPayrollRecord 
@@ -33,19 +32,24 @@ interface StaffReportsProps {
 }
 
 export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
-  const { schoolInfo } = useSchool();
+  const {
+    schoolInfo,
+    staffMembers,
+    addStaffMember,
+    updateStaffMember,
+    deleteStaffMember,
+    payrollRecordsByMonth,
+    setPayrollRecordsForMonth,
+  } = useSchool();
   const [subTab, setSubTab] = useState<'directory' | 'salary-register'>('directory');
   const [selectedDept, setSelectedDept] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('2024-08');
 
-  // Modifiable Staff Members state
-  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(INITIAL_STAFF_MEMBERS);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [isAddingStaff, setIsAddingStaff] = useState<boolean>(false);
+  const [staffFormError, setStaffFormError] = useState<string>('');
 
-  // Modifiable Payroll state
-  const [payrollMap, setPayrollMap] = useState<Record<string, MonthlyPayrollRecord[]>>({});
-  const payrollRecords = payrollMap[selectedMonth] || generateMonthlyPayroll(selectedMonth);
+  const payrollRecords = payrollRecordsByMonth[selectedMonth] ?? generateMonthlyPayroll(selectedMonth, staffMembers);
   const [editingPayroll, setEditingPayroll] = useState<MonthlyPayrollRecord | null>(null);
 
   // Statistics
@@ -142,27 +146,39 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
   // Staff Handlers
   const handleDeleteStaff = (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to remove staff member "${name}"?`)) {
-      setStaffMembers(prev => prev.filter(s => s.id !== id));
+      deleteStaffMember(id);
     }
   };
 
   const handleSaveStaff = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStaff) return;
+
+    const duplicateCode = staffMembers.some(staff =>
+      staff.employeeCode.trim().toLowerCase() === editingStaff.employeeCode.trim().toLowerCase()
+      && staff.id !== editingStaff.id
+    );
+    if (duplicateCode) {
+      setStaffFormError('This employee code is already in use.');
+      return;
+    }
+
     if (isAddingStaff) {
-      setStaffMembers(prev => [...prev, editingStaff]);
+      const { id: _id, ...newStaff } = editingStaff;
+      addStaffMember(newStaff);
     } else {
-      setStaffMembers(prev => prev.map(s => s.id === editingStaff.id ? editingStaff : s));
+      updateStaffMember(editingStaff.id, editingStaff);
     }
     setEditingStaff(null);
     setIsAddingStaff(false);
+    setStaffFormError('');
   };
 
   // Payroll Handlers
   const handleDeletePayroll = (payrollId: string, staffName: string) => {
     if (window.confirm(`Are you sure you want to delete payroll entry for "${staffName}"?`)) {
       const updated = payrollRecords.filter(p => p.payrollId !== payrollId);
-      setPayrollMap(prev => ({ ...prev, [selectedMonth]: updated }));
+      setPayrollRecordsForMonth(selectedMonth, updated);
     }
   };
 
@@ -170,7 +186,7 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
     e.preventDefault();
     if (!editingPayroll) return;
     const updated = payrollRecords.map(p => p.payrollId === editingPayroll.payrollId ? editingPayroll : p);
-    setPayrollMap(prev => ({ ...prev, [selectedMonth]: updated }));
+    setPayrollRecordsForMonth(selectedMonth, updated);
     setEditingPayroll(null);
   };
 
@@ -272,7 +288,11 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
               <span className="text-xs text-[#6B7280]">{filteredStaff.length} Employees Shown</span>
               <button
                 onClick={() => {
-                  const newCode = `EMP-${(staffMembers.length + 1).toString().padStart(3, '0')}`;
+                  const nextEmployeeNumber = staffMembers.reduce((largest, staff) => {
+                    const number = Number(staff.employeeCode.match(/\d+$/)?.[0] || 0);
+                    return Math.max(largest, number);
+                  }, 0) + 1;
+                  const newCode = `EMP-${String(nextEmployeeNumber).padStart(3, '0')}`;
                   setEditingStaff({
                     id: `staff-${Date.now()}`,
                     employeeCode: newCode,
@@ -281,15 +301,27 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
                     department: 'Academic / Teaching',
                     qualification: 'B.Ed',
                     experienceYears: 1,
-                    joiningDate: new Date().toISOString().split('T')[0],
-                    salaryGrade: 'Grade-C',
-                    subjectsHandled: ['General'],
-                    classesAssigned: ['Standard 1'],
-                    mobile: '9876543210',
+                    dateOfJoining: new Date().toISOString().split('T')[0],
+                    subjectsHandled: [],
+                    classesAssigned: [],
+                    mobile: '',
                     email: '',
                     status: 'Active',
+                    basicSalary: 0,
+                    hra: 0,
+                    da: 0,
+                    conveyance: 0,
+                    specialAllowance: 0,
+                    epfEligible: true,
+                    esiEligible: false,
+                    bankName: '',
+                    accountNo: '',
+                    ifscCode: '',
+                    panNumber: '',
+                    uanNumber: '',
                   });
                   setIsAddingStaff(true);
+                  setStaffFormError('');
                 }}
                 className="flex items-center gap-1 px-3 py-1.5 bg-[#4F6D7A] hover:bg-[#415A65] text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-xs"
               >
@@ -475,14 +507,17 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
       {/* Modal: Add or Edit Staff Member */}
       {editingStaff && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-[#E2E8E2] space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-[#E2E8E2] space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-[#E2E8E2] pb-3">
               <h3 className="font-bold text-sm text-[#2D312E] flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#4F6D7A]" />
                 {isAddingStaff ? 'Add Staff Member' : `Edit Staff: ${editingStaff.name}`}
               </h3>
               <button
-                onClick={() => setEditingStaff(null)}
+                onClick={() => {
+                  setEditingStaff(null);
+                  setStaffFormError('');
+                }}
                 className="text-[#6B7280] hover:text-[#2D312E] p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
@@ -490,6 +525,7 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
             </div>
 
             <form onSubmit={handleSaveStaff} className="space-y-3 text-xs">
+              {staffFormError && <p className="text-red-600 font-semibold" role="alert">{staffFormError}</p>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[#6B7280] font-bold block mb-1">Employee Code</label>
@@ -519,7 +555,7 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
                   <label className="text-[#6B7280] font-bold block mb-1">Department</label>
                   <select
                     value={editingStaff.department}
-                    onChange={(e) => setEditingStaff({ ...editingStaff, department: e.target.value })}
+                    onChange={(e) => setEditingStaff({ ...editingStaff, department: e.target.value as StaffMember['department'] })}
                     className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg"
                   >
                     <option value="Academic / Teaching">Academic / Teaching</option>
@@ -579,13 +615,100 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
                   <label className="text-[#6B7280] font-bold block mb-1">Status</label>
                   <select
                     value={editingStaff.status}
-                    onChange={(e) => setEditingStaff({ ...editingStaff, status: e.target.value as any })}
+                    onChange={(e) => setEditingStaff({ ...editingStaff, status: e.target.value as StaffMember['status'] })}
                     className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg font-bold"
                   >
                     <option value="Active">Active</option>
                     <option value="On Leave">On Leave</option>
                     <option value="Relieved">Relieved</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[#6B7280] font-bold block mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editingStaff.email}
+                    onChange={(e) => setEditingStaff({ ...editingStaff, email: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="text-[#6B7280] font-bold block mb-1">Date of Joining</label>
+                  <input
+                    type="date"
+                    value={editingStaff.dateOfJoining}
+                    onChange={(e) => setEditingStaff({ ...editingStaff, dateOfJoining: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-[#E2E8E2] bg-[#F7F8F6] p-3">
+                <h4 className="font-bold text-[#2D312E]">Monthly Salary</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {([
+                    ['Basic Salary', 'basicSalary'],
+                    ['HRA', 'hra'],
+                    ['DA', 'da'],
+                    ['Conveyance', 'conveyance'],
+                    ['Special Allowance', 'specialAllowance'],
+                  ] as const).map(([label, key]) => (
+                    <div key={key}>
+                      <label className="text-[#6B7280] font-bold block mb-1">{label}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editingStaff[key]}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, [key]: Number(e.target.value) || 0 })}
+                        className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg font-mono"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-[#2D312E]">
+                    <input
+                      type="checkbox"
+                      checked={editingStaff.epfEligible}
+                      onChange={(e) => setEditingStaff({ ...editingStaff, epfEligible: e.target.checked })}
+                    />
+                    EPF eligible
+                  </label>
+                  <label className="flex items-center gap-2 text-[#2D312E]">
+                    <input
+                      type="checkbox"
+                      checked={editingStaff.esiEligible}
+                      onChange={(e) => setEditingStaff({ ...editingStaff, esiEligible: e.target.checked })}
+                    />
+                    ESI eligible
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-[#E2E8E2] p-3">
+                <h4 className="font-bold text-[#2D312E]">Bank & Statutory Details</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {([
+                    ['Bank Name', 'bankName'],
+                    ['Account Number', 'accountNo'],
+                    ['IFSC Code', 'ifscCode'],
+                    ['PAN Number', 'panNumber'],
+                    ['UAN Number', 'uanNumber'],
+                  ] as const).map(([label, key]) => (
+                    <div key={key}>
+                      <label className="text-[#6B7280] font-bold block mb-1">{label}</label>
+                      <input
+                        type="text"
+                        value={editingStaff[key]}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, [key]: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-[#E2E8E2] rounded-lg"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -603,7 +726,10 @@ export const StaffReports: React.FC<StaffReportsProps> = ({ onExportCsv }) => {
               <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8E2]">
                 <button
                   type="button"
-                  onClick={() => setEditingStaff(null)}
+                  onClick={() => {
+                    setEditingStaff(null);
+                    setStaffFormError('');
+                  }}
                   className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-[#2D312E] font-bold rounded-lg cursor-pointer"
                 >
                   Cancel

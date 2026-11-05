@@ -15,6 +15,14 @@ import {
 } from '../types';
 import { INITIAL_STUDENTS, INITIAL_RECEIPTS, INITIAL_EXPENSES } from '../data/initialData';
 import { safeBrowserStorage } from '../utils/browserStorage';
+import {
+  DailyAttendanceDetail,
+  INITIAL_DAILY_STUDENT_ATTENDANCE,
+  INITIAL_STAFF_MEMBERS,
+  MonthlyPayrollRecord,
+  StaffMember,
+  generateMonthlyPayroll,
+} from '../data/reportsData';
 
 interface PaymentInput {
   studentId: string;
@@ -42,6 +50,14 @@ interface SchoolContextType {
   students: Student[];
   receipts: PaymentReceipt[];
   expenses: SchoolExpense[];
+  staffMembers: StaffMember[];
+  dailyAttendance: DailyAttendanceDetail[];
+  setDailyAttendance: React.Dispatch<React.SetStateAction<DailyAttendanceDetail[]>>;
+  addStaffMember: (staffData: Omit<StaffMember, 'id'>) => StaffMember;
+  updateStaffMember: (id: string, updates: Partial<StaffMember>) => void;
+  deleteStaffMember: (id: string) => void;
+  payrollRecordsByMonth: Record<string, MonthlyPayrollRecord[]>;
+  setPayrollRecordsForMonth: (month: string, records: MonthlyPayrollRecord[]) => void;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   userRole: 'admin' | 'parent';
@@ -119,10 +135,79 @@ const isSchoolInfo = (value: unknown): value is SchoolInfo => {
   const requiredKeys = ['name', 'tagline', 'adminName', 'location', 'address', 'pincode', 'phone', 'email', 'upiId', 'gpayPhone'];
   return requiredKeys.every(key => typeof value[key] === 'string')
     && (value.academicYear === undefined || typeof value.academicYear === 'string')
-    && (value.logoUrl === undefined || typeof value.logoUrl === 'string');
+    && (value.logoUrl === undefined || typeof value.logoUrl === 'string')
+    && (value.principalSignatureUrl === undefined || typeof value.principalSignatureUrl === 'string');
 };
 
 const isArray = (value: unknown): value is unknown[] => Array.isArray(value);
+
+const isStaffMember = (value: unknown): value is StaffMember => {
+  if (!isObject(value)) return false;
+
+  const stringKeys = [
+    'id', 'employeeCode', 'name', 'designation', 'department', 'qualification',
+    'dateOfJoining', 'mobile', 'email', 'status', 'bankName', 'accountNo',
+    'ifscCode', 'panNumber', 'uanNumber',
+  ];
+  const numberKeys = [
+    'experienceYears', 'basicSalary', 'hra', 'da', 'conveyance', 'specialAllowance',
+  ];
+  return stringKeys.every(key => typeof value[key] === 'string')
+    && numberKeys.every(key => typeof value[key] === 'number')
+    && Array.isArray(value.subjectsHandled)
+    && value.subjectsHandled.every(item => typeof item === 'string')
+    && Array.isArray(value.classesAssigned)
+    && value.classesAssigned.every(item => typeof item === 'string')
+    && typeof value.epfEligible === 'boolean'
+    && typeof value.esiEligible === 'boolean'
+    && ['Academic / Teaching', 'Administration', 'Transport', 'Support Staff'].includes(String(value.department))
+    && ['Active', 'On Leave', 'Relieved'].includes(String(value.status));
+};
+
+const isStaffMemberArray = (value: unknown): value is StaffMember[] => (
+  Array.isArray(value) && value.every(isStaffMember)
+);
+
+const isMonthlyPayrollRecord = (value: unknown): value is MonthlyPayrollRecord => {
+  if (!isObject(value)) return false;
+
+  const stringKeys = [
+    'payrollId', 'month', 'staffId', 'employeeCode', 'staffName', 'designation',
+    'department', 'bankName', 'accountNo', 'ifscCode', 'panNumber', 'uanNumber',
+    'paymentMode', 'paymentStatus', 'transactionReference', 'disbursementDate',
+  ];
+  const numberKeys = [
+    'basicSalary', 'hra', 'da', 'conveyance', 'specialAllowance', 'grossSalary',
+    'epfEmployee', 'esiEmployee', 'professionalTax', 'advanceOrLoanDeduction',
+    'totalDeductions', 'netPayable',
+  ];
+  return stringKeys.every(key => typeof value[key] === 'string')
+    && numberKeys.every(key => typeof value[key] === 'number')
+    && ['Bank NEFT', 'Bank Transfer', 'Cash'].includes(String(value.paymentMode))
+    && ['Disbursed', 'Pending'].includes(String(value.paymentStatus));
+};
+
+const isPayrollRecordsByMonth = (value: unknown): value is Record<string, MonthlyPayrollRecord[]> => (
+  isObject(value)
+  && Object.values(value).every(records => Array.isArray(records) && records.every(isMonthlyPayrollRecord))
+);
+
+const isDailyAttendanceArray = (value: unknown): value is DailyAttendanceDetail[] => (
+  Array.isArray(value) && value.every(record => (
+    isObject(record)
+    && typeof record.id === 'string'
+    && (record.date === undefined || typeof record.date === 'string')
+    && typeof record.rollNo === 'string'
+    && typeof record.admissionNo === 'string'
+    && typeof record.studentName === 'string'
+    && typeof record.standard === 'string'
+    && typeof record.section === 'string'
+    && ['Present', 'Absent', 'Late', 'Half Day'].includes(String(record.status))
+    && (record.reason === undefined || typeof record.reason === 'string')
+    && typeof record.parentPhone === 'string'
+    && typeof record.notifiedWhatsApp === 'boolean'
+  ))
+);
 
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>(() => {
@@ -154,6 +239,122 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return readStoredValue('wisdom_expenses', INITIAL_EXPENSES, isArray) as SchoolExpense[];
   });
 
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => (
+    readStoredValue('wisdom_staff_members', INITIAL_STAFF_MEMBERS, isStaffMemberArray)
+  ));
+  const [payrollRecordsByMonth, setPayrollRecordsByMonth] = useState<Record<string, MonthlyPayrollRecord[]>>(() => (
+    readStoredValue('wisdom_payroll_records', {}, isPayrollRecordsByMonth)
+  ));
+  const [dailyAttendance, setDailyAttendance] = useState<DailyAttendanceDetail[]>(() => (
+    readStoredValue('wisdom_daily_attendance', INITIAL_DAILY_STUDENT_ATTENDANCE, isDailyAttendanceArray)
+  ));
+  const [dailyAttendanceHydrated, setDailyAttendanceHydrated] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const hydrateSavedData = async () => {
+      const [
+        storedSchoolInfo,
+        storedClassList,
+        storedFeeStructure,
+        storedStudents,
+        storedReceipts,
+        storedExpenses,
+        storedStaffMembers,
+        storedPayrollRecords,
+        storedDailyAttendance,
+      ] = await Promise.all([
+        safeBrowserStorage.loadJson('wisdom_school_info'),
+        safeBrowserStorage.loadJson('wisdom_class_list'),
+        safeBrowserStorage.loadJson('wisdom_fee_structure'),
+        safeBrowserStorage.loadJson('wisdom_students'),
+        safeBrowserStorage.loadJson('wisdom_receipts'),
+        safeBrowserStorage.loadJson('wisdom_expenses'),
+        safeBrowserStorage.loadJson('wisdom_staff_members'),
+        safeBrowserStorage.loadJson('wisdom_payroll_records'),
+        safeBrowserStorage.loadJson('wisdom_daily_attendance'),
+      ]);
+
+      if (isCancelled) return;
+
+      try {
+        if (storedSchoolInfo) {
+          const parsed = JSON.parse(storedSchoolInfo) as unknown;
+          if (isSchoolInfo(parsed)) {
+            setSchoolInfo(prev => ({ ...DEFAULT_SCHOOL_INFO, ...prev, ...parsed }));
+          }
+        }
+
+        if (storedClassList) {
+          const parsed = JSON.parse(storedClassList) as unknown;
+          if (Array.isArray(parsed)) {
+            setClassList(parsed as string[]);
+          }
+        }
+
+        if (storedFeeStructure) {
+          const parsed = JSON.parse(storedFeeStructure) as unknown;
+          if (isObject(parsed)) {
+            setFeeStructure(parsed as Record<string, number>);
+          }
+        }
+
+        if (storedStudents) {
+          const parsed = JSON.parse(storedStudents) as unknown;
+          if (Array.isArray(parsed)) {
+            setStudents(parsed as Student[]);
+          }
+        }
+
+        if (storedReceipts) {
+          const parsed = JSON.parse(storedReceipts) as unknown;
+          if (Array.isArray(parsed)) {
+            setReceipts(parsed as PaymentReceipt[]);
+          }
+        }
+
+        if (storedExpenses) {
+          const parsed = JSON.parse(storedExpenses) as unknown;
+          if (Array.isArray(parsed)) {
+            setExpenses(parsed as SchoolExpense[]);
+          }
+        }
+
+        if (storedStaffMembers) {
+          const parsed = JSON.parse(storedStaffMembers) as unknown;
+          if (isStaffMemberArray(parsed)) {
+            setStaffMembers(parsed);
+          }
+        }
+
+        if (storedPayrollRecords) {
+          const parsed = JSON.parse(storedPayrollRecords) as unknown;
+          if (isPayrollRecordsByMonth(parsed)) {
+            setPayrollRecordsByMonth(parsed);
+          }
+        }
+
+        if (storedDailyAttendance) {
+          const parsed = JSON.parse(storedDailyAttendance) as unknown;
+          if (isDailyAttendanceArray(parsed)) {
+            setDailyAttendance(parsed);
+          }
+        }
+      } catch {
+        // Ignore malformed persisted payloads and keep the currently loaded defaults.
+      } finally {
+        setDailyAttendanceHydrated(true);
+      }
+    };
+
+    void hydrateSavedData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'parent'>('admin');
   const [activeStudentPortal, setActiveStudentPortal] = useState<Student | null>(null);
@@ -182,6 +383,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     void safeBrowserStorage.saveJson('wisdom_expenses', JSON.stringify(expenses));
   }, [expenses]);
+
+  useEffect(() => {
+    void safeBrowserStorage.saveJson('wisdom_staff_members', JSON.stringify(staffMembers));
+  }, [staffMembers]);
+
+  useEffect(() => {
+    void safeBrowserStorage.saveJson('wisdom_payroll_records', JSON.stringify(payrollRecordsByMonth));
+  }, [payrollRecordsByMonth]);
+
+  useEffect(() => {
+    if (dailyAttendanceHydrated) {
+      void safeBrowserStorage.saveJson('wisdom_daily_attendance', JSON.stringify(dailyAttendance));
+    }
+  }, [dailyAttendance, dailyAttendanceHydrated]);
 
   const updateSchoolInfo = (info: Partial<SchoolInfo>) => {
     setSchoolInfo(prev => ({ ...prev, ...info }));
@@ -383,6 +598,38 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setExpenses(prev => prev.filter(e => e.id !== id));
   };
 
+  const addStaffMember = (staffData: Omit<StaffMember, 'id'>): StaffMember => {
+    const newStaff: StaffMember = {
+      ...staffData,
+      id: `stf-${Date.now()}`,
+    };
+    setStaffMembers(prev => [...prev, newStaff]);
+    setPayrollRecordsByMonth(prev => {
+      const next = { ...prev };
+      Object.keys(prev).forEach(month => {
+        const records = prev[month] ?? [];
+        const newRecord = generateMonthlyPayroll(month, [newStaff])[0];
+        if (newRecord && !records.some(record => record.staffId === newStaff.id)) {
+          next[month] = [...records, newRecord];
+        }
+      });
+      return next;
+    });
+    return newStaff;
+  };
+
+  const updateStaffMember = (id: string, updates: Partial<StaffMember>) => {
+    setStaffMembers(prev => prev.map(staff => staff.id === id ? { ...staff, ...updates } : staff));
+  };
+
+  const deleteStaffMember = (id: string) => {
+    setStaffMembers(prev => prev.filter(staff => staff.id !== id));
+  };
+
+  const setPayrollRecordsForMonth = (month: string, records: MonthlyPayrollRecord[]) => {
+    setPayrollRecordsByMonth(prev => ({ ...prev, [month]: records }));
+  };
+
   const resetToDefaults = () => {
     if (window.confirm('Reset all data to default Wisdom School demo records?')) {
       setSchoolInfo(DEFAULT_SCHOOL_INFO);
@@ -391,12 +638,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setStudents(INITIAL_STUDENTS);
       setReceipts(INITIAL_RECEIPTS);
       setExpenses(INITIAL_EXPENSES);
+      setStaffMembers(INITIAL_STAFF_MEMBERS);
+      setPayrollRecordsByMonth({});
+      setDailyAttendance(INITIAL_DAILY_STUDENT_ATTENDANCE);
       void safeBrowserStorage.clearJson('wisdom_school_info');
       void safeBrowserStorage.clearJson('wisdom_class_list');
       void safeBrowserStorage.clearJson('wisdom_fee_structure');
       void safeBrowserStorage.clearJson('wisdom_students');
       void safeBrowserStorage.clearJson('wisdom_receipts');
       void safeBrowserStorage.clearJson('wisdom_expenses');
+      void safeBrowserStorage.clearJson('wisdom_staff_members');
+      void safeBrowserStorage.clearJson('wisdom_payroll_records');
+      void safeBrowserStorage.clearJson('wisdom_daily_attendance');
     }
   };
 
@@ -409,6 +662,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       students,
       receipts,
       expenses,
+      staffMembers,
+      dailyAttendance,
+      payrollRecordsByMonth,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -427,6 +683,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (parsed.classList) setClassList(parsed.classList);
         if (parsed.feeStructure) setFeeStructure(parsed.feeStructure);
         if (parsed.expenses) setExpenses(parsed.expenses);
+        if (isStaffMemberArray(parsed.staffMembers)) setStaffMembers(parsed.staffMembers);
+        if (isPayrollRecordsByMonth(parsed.payrollRecordsByMonth)) {
+          setPayrollRecordsByMonth(parsed.payrollRecordsByMonth);
+        }
+        if (isDailyAttendanceArray(parsed.dailyAttendance)) {
+          setDailyAttendance(parsed.dailyAttendance);
+        }
         setStudents(parsed.students);
         setReceipts(parsed.receipts);
         return true;
@@ -484,6 +747,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         students,
         receipts,
         expenses,
+        staffMembers,
+        dailyAttendance,
+        setDailyAttendance,
+        addStaffMember,
+        updateStaffMember,
+        deleteStaffMember,
+        payrollRecordsByMonth,
+        setPayrollRecordsForMonth,
         activeTab,
         setActiveTab,
         userRole,
@@ -522,4 +793,3 @@ export const useSchool = () => {
   }
   return context;
 };
-
